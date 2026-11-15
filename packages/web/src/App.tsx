@@ -38,7 +38,7 @@ export function App() {
     setUnauthorizedHandler(() => useAuth.getState().expire());
     void useAuth.getState().boot();
   }, []);
-  if (!booted) return <Loading label="Starting OpenDialer…" />;
+  if (!booted) return <Loading label="Starting AutoDialer…" />;
   return (
     <BrowserRouter>
       <SetupGate>

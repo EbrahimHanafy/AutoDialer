@@ -72,7 +72,7 @@ export function LoginPage() {
             <input name="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
           {showServer ? (
-            <Field label="Server" hint="Leave as is when this page is served by your OpenDialer server.">
+            <Field label="Server" hint="Leave as is when this page is served by your AutoDialer server.">
               <input name="server" inputMode="url" value={server} onChange={(e) => setServer(e.target.value)} placeholder="https://dialer.example.com:8443" />
             </Field>
           ) : (
@@ -83,7 +83,7 @@ export function LoginPage() {
           <button type="submit" className="btn primary large block" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
-          {pub && <p className="muted small" style={{ textAlign: 'center' }}>OpenDialer {pub.version}</p>}
+          {pub && <p className="muted small" style={{ textAlign: 'center' }}>AutoDialer {pub.version}</p>}
         </form>
       </div>
     </div>

@@ -157,7 +157,7 @@ function createWindow() {
     minHeight: 600,
     ...(saved || {}),
     show: false,
-    title: 'OpenDialer',
+    title: 'AutoDialer',
     icon: ICON_PATH,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0f172a' : '#f8fafc',
     autoHideMenuBar: false,
@@ -226,7 +226,7 @@ function createWindow() {
   });
   wc.on('page-title-updated', (e, title) => {
     e.preventDefault();
-    win.setTitle(title && !/^opendialer$/i.test(title) ? `${title} - OpenDialer` : 'OpenDialer');
+    win.setTitle(title && !/^(?:open|auto)dialer$/i.test(title) ? `${title} - AutoDialer` : 'AutoDialer');
   });
 
   if (SMOKE || !config.serverUrl) showConnectPage();
@@ -295,7 +295,7 @@ function onCertificateError(event, _webContents, url, error, certificate, callba
         detail:
           `Server: ${host}\nIssued to: ${certificate.subjectName}\nIssuer: ${certificate.issuerName}\n` +
           `Fingerprint: ${certificate.fingerprint}\nError: ${error}\n\n` +
-          'Only trust it if this is your own OpenDialer server (the fingerprint can be compared with the one your administrator gives you).',
+          'Only trust it if this is your own AutoDialer server (the fingerprint can be compared with the one your administrator gives you).',
       })
       .then(({ response }) => {
         const ok = response === 0;
@@ -361,13 +361,13 @@ function probeHealth(origin) {
           if (body.length > 64 * 1024) req.destroy(new Error('Response too large'));
         });
         res.on('end', () => {
-          if (res.statusCode !== 200) return resolve({ ok: false, error: `The server answered HTTP ${res.statusCode}. Is this an OpenDialer server?` });
+          if (res.statusCode !== 200) return resolve({ ok: false, error: `The server answered HTTP ${res.statusCode}. Is this an AutoDialer server?` });
           try {
             const json = JSON.parse(body);
             if (!json || json.ok !== true) throw new Error('bad');
             resolve({ ok: true, url: origin, version: String(json.version || '?'), certificateTrusted: trusted });
           } catch {
-            resolve({ ok: false, error: 'The address answered, but it does not look like an OpenDialer server.' });
+            resolve({ ok: false, error: 'The address answered, but it does not look like an AutoDialer server.' });
           }
         });
       },
@@ -437,8 +437,8 @@ function toggleTheme() {
 function showAbout() {
   dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined, {
     type: 'info',
-    title: 'About OpenDialer',
-    message: `OpenDialer Desktop ${app.getVersion()}`,
+    title: 'About AutoDialer',
+    message: `AutoDialer Desktop ${app.getVersion()}`,
     detail: [
       `Server: ${config.serverUrl || '(not connected)'}`,
       `Electron ${process.versions.electron} / Chromium ${process.versions.chrome} / Node ${process.versions.node}`,
@@ -495,7 +495,7 @@ function buildMenu() {
     {
       role: 'help',
       submenu: [
-        { label: 'About OpenDialer', click: showAbout },
+        { label: 'About AutoDialer', click: showAbout },
         { label: 'Open documentation', click: () => shell.openExternal(DOCS_URL) },
       ],
     },
@@ -513,14 +513,14 @@ function createTray() {
     tray = null;
     return;
   }
-  tray.setToolTip('OpenDialer');
+  tray.setToolTip('AutoDialer');
   const toggle = () => {
     if (win && win.isVisible() && !win.isMinimized()) win.hide();
     else showWindow();
   };
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Show / hide OpenDialer', click: toggle },
+      { label: 'Show / hide AutoDialer', click: toggle },
       { type: 'separator' },
       { label: 'Quit', click: quit },
     ]),

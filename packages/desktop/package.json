@@ -2,7 +2,7 @@
   "name": "@opendialer/desktop",
   "version": "1.0.0",
   "private": true,
-  "description": "OpenDialer desktop app for agents and supervisors (Electron shell around the OpenDialer web console).",
+  "description": "AutoDialer desktop app for agents and supervisors (Electron shell around the AutoDialer web console).",
   "author": "OpenDialer contributors",
   "license": "MIT",
   "homepage": "https://github.com/cyberkyd01/OpenDialer",
@@ -22,7 +22,7 @@
   },
   "build": {
     "appId": "com.opendialer.desktop",
-    "productName": "OpenDialer",
+    "productName": "AutoDialer",
     "copyright": "Copyright (c) OpenDialer contributors",
     "directories": {
       "output": "release",
@@ -59,7 +59,7 @@
         }
       ],
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "OpenDialer uses the microphone for calls placed from the built-in softphone."
+        "NSMicrophoneUsageDescription": "AutoDialer uses the microphone for calls placed from the built-in softphone."
       }
     },
     "linux": {

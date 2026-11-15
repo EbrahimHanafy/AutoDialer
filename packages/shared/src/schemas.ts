@@ -33,7 +33,7 @@ export const setupSchema = z.object({
   username: z.string().min(2).max(40).regex(/^[a-zA-Z0-9._-]+$/, 'Letters, digits, . _ - only'),
   password: z.string().min(8).max(200),
   displayName: z.string().min(1).max(80),
-  companyName: z.string().min(1).max(120).default('OpenDialer'),
+  companyName: z.string().min(1).max(120).default('AutoDialer'),
   defaultCountry: z.string().length(2).default('US'),
   defaultTimezone: ianaZone.default('UTC'),
 });

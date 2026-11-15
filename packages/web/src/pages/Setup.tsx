@@ -31,7 +31,7 @@ export function SetupPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const { confirm, ...rest } = form;
-    const parsed = setupSchema.safeParse({ ...rest, companyName: rest.companyName.trim() || 'OpenDialer' });
+    const parsed = setupSchema.safeParse({ ...rest, companyName: rest.companyName.trim() || 'AutoDialer' });
     const errs = parsed.success ? {} : zodIssues(parsed.error);
     if (confirm !== form.password) errs.confirm = 'Passwords do not match';
     setErrors(errs);
