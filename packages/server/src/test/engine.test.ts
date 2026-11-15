@@ -97,14 +97,14 @@ describe('preview dialing flow', () => {
     await client.call('agent:ready');
     const a = await client.next('lead:assigned');
     const d1 = await client.call('lead:dial', { leadId: a.lead.id });
-    await runCall(client, d1.data.callId, { answer: false, cause: 'no-answer' });
-    const r1 = await client.call('call:dispose', { callId: d1.data.callId, dispositionId: dispositions.NO_ANSWER });
-    expect(r1.data.state).toBe('ready'); // retry is 240 min away -> nothing to dial
+    const end1 = await runCall(client, d1.data.callId, { answer: false, cause: 'no-answer' });
+    expect(end1.data.state).toBe('ready'); // automatically dispositioned; retry is delayed
     let lead = (await t.api('GET', `/api/leads/${leads[0].id}`, undefined, admin)).body;
     expect(lead.status).toBe('in_progress');
     expect(lead.attempts).toBe(1);
     const call1 = (await t.api('GET', `/api/calls/${d1.data.callId}`, undefined, admin)).body;
     expect(call1.result).toBe('no_answer');
+    expect(call1.dispositionCode).toBe('NO_ANSWER');
 
     // make it due now and tick -> assigned again
     await t.api('PATCH', `/api/leads/${leads[0].id}`, { nextAttemptAt: new Date(Date.now() - 1000).toISOString() }, admin);
