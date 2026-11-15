@@ -95,7 +95,7 @@ export function createApp(config: Config, log: Logger, dbFile = path.join(config
       res
         .type('html')
         .send(
-          `<!doctype html><title>OpenDialer</title><body style="font-family:system-ui;padding:2rem"><h1>OpenDialer server is running</h1>
+          `<!doctype html><title>AutoDialer</title><body style="font-family:system-ui;padding:2rem"><h1>AutoDialer server is running</h1>
            <p>The web client is not built. Run <code>npm run build</code> in the repository root, then restart the server.</p>
            <p>API health: <a href="/api/health">/api/health</a></p></body>`,
         ),

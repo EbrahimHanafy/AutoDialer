@@ -2,7 +2,7 @@ import { DEFAULT_PAUSE_CODES, settingsSchema, type Settings } from '@opendialer/
 import type { DB } from '../db.js';
 
 export const DEFAULT_SETTINGS: Settings = {
-  companyName: 'OpenDialer',
+  companyName: 'AutoDialer',
   telephony: {
     mode: 'sim',
     wssUrl: '',

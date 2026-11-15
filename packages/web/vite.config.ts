@@ -12,8 +12,8 @@ export default defineConfig({
       injectRegister: 'auto',
       includeAssets: ['icons/favicon.svg'],
       manifest: {
-        name: 'OpenDialer',
-        short_name: 'OpenDialer',
+        name: 'AutoDialer',
+        short_name: 'AutoDialer',
         description: 'Self-hosted call-center auto-dialer',
         start_url: '/',
         scope: '/',

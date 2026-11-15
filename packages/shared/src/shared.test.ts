@@ -114,7 +114,7 @@ describe('schemas', () => {
   });
   it('validates setup', () => {
     expect(() => setupSchema.parse({ username: 'ad min', password: 'password123', displayName: 'A' })).toThrow();
-    expect(setupSchema.parse({ username: 'admin', password: 'password123', displayName: 'A' }).companyName).toBe('OpenDialer');
+    expect(setupSchema.parse({ username: 'admin', password: 'password123', displayName: 'A' }).companyName).toBe('AutoDialer');
   });
   it('update schemas never re-apply create defaults (omitted = unchanged)', () => {
     expect(campaignUpdateSchema.parse({ scriptId: 3 })).toEqual({ scriptId: 3 });

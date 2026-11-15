@@ -324,7 +324,11 @@ export class Engine {
     const call = endCall(this.ctx.db, p.callId, p.cause, p.providerCallId);
     this.transport.toUser(userId, 'call:ended', { call });
     this.ctx.bus.emitDomain('call.ended', { callId: call.id });
-    if (s.disposedDuringCall) {
+    if (call.result === 'no_answer') {
+      s.wrapupStartedAt = Date.now();
+      this.setState(s, 'wrapup', null);
+      this.autoDispose(s, 'no answer');
+    } else if (s.disposedDuringCall) {
       this.finishWrapup(s);
     } else {
       s.wrapupStartedAt = Date.now();
@@ -518,7 +522,7 @@ export class Engine {
     this.scheduleWallboard();
   }
 
-  private autoDispose(s: AgentSession) {
+  private autoDispose(s: AgentSession, reason = 'wrap-up timeout') {
     if (!s.callId) return;
     const call = findCall(this.ctx.db, s.callId);
     if (!call) return;
@@ -527,8 +531,15 @@ export class Engine {
     const d = listDispositions(this.ctx.db).find((x) => x.code === code) ?? listDispositions(this.ctx.db).find((x) => x.category === 'no_contact');
     if (!d) return;
     try {
-      this.dispose(s.userId, { callId: s.callId, dispositionId: d.id, notes: 'auto: wrap-up timeout' });
-      this.transport.toUser(s.userId, 'notice', { level: 'info', message: `Call auto-dispositioned as ${d.label} (wrap-up timeout)` });
+      this.dispose(s.userId, {
+        callId: s.callId,
+        dispositionId: d.id,
+        notes: `auto: ${reason}`,
+      });
+      this.transport.toUser(s.userId, 'notice', {
+        level: 'info',
+        message: `Call auto-dispositioned as ${d.label} (${reason})`,
+      });
     } catch (err) {
       this.ctx.log.warn({ err }, 'auto dispose failed');
     }

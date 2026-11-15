@@ -30,7 +30,7 @@ function WebhookEditor({ hook, events, onClose, onSaved }: { hook: Webhook | nul
         }}
       >
         <Field label="URL" error={errors.url}>
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://crm.example.com/hooks/opendialer" />
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://crm.example.com/hooks/autodialer" />
         </Field>
         <Field label="Signing secret" hint="Sent as X-OpenDialer-Signature: sha256=HMAC(body)">
           <input value={secret} onChange={(e) => setSecret(e.target.value)} />

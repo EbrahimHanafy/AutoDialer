@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
-<title>Connect to server</title>
+<title>Connect to AutoDialer</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -102,8 +102,8 @@
         </g>
       </svg>
       <div>
-        <h1>Connect to OpenDialer</h1>
-        <p class="sub">Enter the address of your OpenDialer server.</p>
+        <h1>Connect to AutoDialer</h1>
+        <p class="sub">Enter the address of your AutoDialer server.</p>
       </div>
     </div>
 
@@ -118,7 +118,7 @@
       <button id="connect" type="submit">Connect</button>
       <div id="status" class="status" role="status" aria-live="polite"></div>
     </form>
-    <p class="foot" id="foot">OpenDialer Desktop</p>
+    <p class="foot" id="foot">AutoDialer Desktop</p>
   </main>
 
 <script>
@@ -131,7 +131,7 @@
     const desk = window.opendialerDesktop;
 
     input.value = params.get('url') || 'https://localhost:8443';
-    if (desk && desk.version) document.getElementById('foot').textContent = 'OpenDialer Desktop ' + desk.version;
+    if (desk && desk.version) document.getElementById('foot').textContent = 'AutoDialer Desktop ' + desk.version;
 
     function show(kind, text) {
       status.className = 'status ' + kind;
@@ -148,7 +148,7 @@
         const res = await bridge.check(input.value);
         if (!res || !res.ok) { show('err', (res && res.error) || 'Connection failed.'); return; }
         input.value = res.url;
-        let msg = 'Connected: OpenDialer server v' + res.version + '.';
+        let msg = 'Connected: AutoDialer server v' + res.version + '.';
         if (res.certificateTrusted === false) msg += '\nThe server uses a self-signed certificate - you will be asked to trust it once.';
         if (res.url.indexOf('http://') === 0) msg += '\nNote: plain http. For the microphone, https is strongly recommended.';
         show('ok', msg + '\nOpening…');

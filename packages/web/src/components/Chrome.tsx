@@ -25,7 +25,7 @@ export function Brand({ to = '/' }: { to?: string }) {
   return (
     <Link to={to} className="brand">
       <img src="/icons/icon-192.png" alt="" />
-      <span>{company && company !== 'OpenDialer' ? company : 'OpenDialer'}</span>
+      <span>{company && company !== 'OpenDialer' ? company : 'AutoDialer'}</span>
     </Link>
   );
 }
