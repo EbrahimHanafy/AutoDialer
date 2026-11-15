@@ -1,9 +1,9 @@
-# OpenDialer
+# AutoDialer
 
 **Self-hosted call-center auto-dialer** — campaigns, lead lists, preview & progressive (power) dialing, a WebRTC softphone that works with any SIP provider or PBX, do-not-call enforcement, callbacks, scripts, recordings, live wallboard and reports.
 Agents connect from the same office network or remotely, from **Windows, macOS, Linux (desktop app or browser) and Android (installable PWA)**.
 
-OpenDialer is an open-source alternative to commercial Windows-only dialers such as Ecsow: one small server (Node.js + SQLite, no external database) and a web console.
+AutoDialer is an open-source alternative to commercial Windows-only dialers such as Ecsow: one small server (Node.js + SQLite, no external database) and a web console.
 
 > This is agent-driven calling software: a human agent is on every call. It deliberately does not include unattended pre-recorded message blasting. You are responsible for complying with the calling laws that apply to you — see [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
 
@@ -45,8 +45,8 @@ OpenDialer is an open-source alternative to commercial Windows-only dialers such
 Requirements: [Node.js 20+](https://nodejs.org) (22 recommended) on Windows, macOS or Linux. Docker instructions are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ```bash
-git clone https://github.com/cyberkyd01/OpenDialer.git
-cd OpenDialer
+git clone https://github.com/cyberkyd01/AutoDialer.git
+cd AutoDialer
 npm install
 npm run build
 npm start
@@ -55,7 +55,7 @@ npm start
 The server prints something like:
 
 ```
-  OpenDialer v1.0.0 is running
+  AutoDialer v1.0.0 is running
   Open the console at:
     http://localhost:8080
     https://192.168.1.44:8443
@@ -76,7 +76,7 @@ All data (SQLite database, recordings, TLS certificate, backups) lives in one fo
 
 ```
                  ┌────────────────────────────────────────────────┐
-  Admin / Supervisor  ──►  │  OpenDialer server (Node.js)                   │
+  Admin / Supervisor  ──►  │  AutoDialer server (Node.js)                   │
   (browser)               │   REST API  ·  Socket.IO realtime  ·  SQLite    │
                           │   dialer engine · compliance gate · reports      │
   Agent console  ◄──────► │                                                  │
@@ -88,7 +88,7 @@ All data (SQLite database, recordings, TLS certificate, backups) lives in one fo
   Your PBX / SIP provider  ──►  PSTN
 ```
 
-The server decides *who calls whom and when* (campaign rules, lead queue, DNC, calling hours, callbacks) and keeps the call log; the agent's softphone places the actual call through your SIP provider. Because media never touches the OpenDialer server, it runs happily on a small VM or an office PC. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The server decides *who calls whom and when* (campaign rules, lead queue, DNC, calling hours, callbacks) and keeps the call log; the agent's softphone places the actual call through your SIP provider. Because media never touches the AutoDialer server, it runs happily on a small VM or an office PC. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
@@ -110,7 +110,7 @@ npm install
 npm run dev          # server with reload on :8080 + Vite dev server with proxy
 npm test             # shared + server + web unit tests
 npm run typecheck
-npm run e2e -w @opendialer/web   # Playwright end-to-end (builds against the real server)
+npm run e2e -w @AutoDialer/web   # Playwright end-to-end (builds against the real server)
 npm run desktop      # launch the Electron shell
 ```
 
