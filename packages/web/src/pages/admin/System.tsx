@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ErrorBox, useLoad } from '../../components/ui';
 import { api, describeError, downloadFile } from '../../lib/api';
 import { fmtBytes, fmtDateTime, fmtDuration } from '../../lib/format';
+import { hasPermission, useAuth } from '../../store/auth';
 import { toast } from '../../store/toasts';
 
 interface SystemInfo {
@@ -15,6 +16,7 @@ interface SystemInfo {
 }
 
 export default function System() {
+  const user = useAuth((s) => s.user);
   const info = useLoad(() => api.get<SystemInfo>('/admin/system'), []);
   const backups = useLoad(() => api.get<{ file: string; bytes: number; at: string }[]>('/admin/backups'), []);
   const [busy, setBusy] = useState(false);
@@ -98,13 +100,15 @@ export default function System() {
                   <td>{fmtBytes(b.bytes)}</td>
                   <td className="nowrap">{fmtDateTime(b.at)}</td>
                   <td className="actions">
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => void downloadFile(`/admin/backups/${encodeURIComponent(b.file)}`, undefined, b.file).catch((e) => toast.error(describeError(e)))}
-                    >
-                      Download
-                    </button>
+                    {hasPermission(user, 'backups.export') && (
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={() => void downloadFile(`/admin/backups/${encodeURIComponent(b.file)}`, undefined, b.file).catch((e) => toast.error(describeError(e)))}
+                      >
+                        Download
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

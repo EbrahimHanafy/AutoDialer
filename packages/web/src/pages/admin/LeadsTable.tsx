@@ -3,7 +3,7 @@ import { formatPhone, leadUpdateSchema, type CallLog, type Lead, type LeadList, 
 import { Empty, ErrorBox, Field, Modal, Pager, confirmDialog, useLoad } from '../../components/ui';
 import { api, describeError } from '../../lib/api';
 import { fmtDateTime, fmtDuration, fromLocalInput, leadName, toLocalInput, zodIssues } from '../../lib/format';
-import { hasRole, useAuth } from '../../store/auth';
+import { hasPermission, useAuth } from '../../store/auth';
 import { toast } from '../../store/toasts';
 
 export const LEAD_STATUSES: LeadStatus[] = ['new', 'in_progress', 'callback', 'done', 'dnc', 'invalid'];
@@ -194,6 +194,7 @@ export function LeadEditor({ leadId, onClose, onSaved }: { leadId: number; onClo
 /** Searchable, paginated lead table with an edit drawer (used per campaign and globally). */
 export function LeadsTable({ campaignId, lists, showCampaign }: { campaignId?: number; lists?: LeadList[]; showCampaign?: boolean }) {
   const user = useAuth((s) => s.user);
+  const canEdit = hasPermission(user, 'leads.work') || hasPermission(user, 'leads.manage');
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
@@ -268,9 +269,11 @@ export function LeadsTable({ campaignId, lists, showCampaign }: { campaignId?: n
             {(data?.items ?? []).map((l) => (
               <tr key={l.id}>
                 <td>
-                  <button type="button" className="btn ghost small" onClick={() => setEditing(l.id)}>
-                    {leadName(l) || '(no name)'}
-                  </button>
+                  {canEdit ? (
+                    <button type="button" className="btn ghost small" onClick={() => setEditing(l.id)}>
+                      {leadName(l) || '(no name)'}
+                    </button>
+                  ) : leadName(l) || '(no name)'}
                 </td>
                 <td className="nowrap mono">{formatPhone(l.phone)}</td>
                 <td>{l.company}</td>
@@ -282,10 +285,12 @@ export function LeadsTable({ campaignId, lists, showCampaign }: { campaignId?: n
                 <td className="nowrap">{fmtDateTime(l.nextAttemptAt)}</td>
                 {showCampaign && <td>#{l.campaignId}</td>}
                 <td className="actions">
-                  <button type="button" className="btn small" onClick={() => setEditing(l.id)}>
-                    Edit
-                  </button>
-                  {hasRole(user, 'supervisor') && (
+                  {canEdit && (
+                    <button type="button" className="btn small" onClick={() => setEditing(l.id)}>
+                      Edit
+                    </button>
+                  )}
+                  {hasPermission(user, 'leads.manage') && (
                     <button type="button" className="btn small ghost" onClick={() => void del(l)}>
                       Delete
                     </button>

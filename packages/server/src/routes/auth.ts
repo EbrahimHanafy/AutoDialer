@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { changePasswordSchema, loginSchema, setupSchema, type PublicSettings, type SipCredentials } from '@opendialer/shared';
-import { checkLoginAllowed, clearLoginFailures, recordLoginFailure, requireRole, signToken, verifyPassword } from '../auth.js';
+import { checkLoginAllowed, clearLoginFailures, recordLoginFailure, requireAuthenticated, requirePermission, signToken, verifyPassword } from '../auth.js';
 import type { Ctx } from '../context.js';
 import { badRequest, conflict, parse, unauthorized, wrap } from '../errors.js';
 import { audit } from '../services/audit.js';
@@ -53,14 +53,14 @@ export function authRoutes(ctx: Ctx) {
     }),
   );
 
-  r.get('/auth/me', requireRole('agent'), (req, res) => {
+  r.get('/auth/me', requireAuthenticated(), (req, res) => {
     if (req.user!.apiKey) return res.json({ user: req.user, settings: null });
     res.json({ user: getUser(db, req.user!.id), settings: getSettings(db) });
   });
 
   r.post(
     '/auth/change-password',
-    requireRole('agent'),
+    requireAuthenticated(),
     wrap((req, res) => {
       if (req.user!.apiKey) throw badRequest('Not available for API keys');
       const input = parse(changePasswordSchema, req.body);
@@ -73,7 +73,7 @@ export function authRoutes(ctx: Ctx) {
   );
 
   /** Softphone credentials for the logged-in agent. */
-  r.get('/auth/sip', requireRole('agent'), wrap((req, res) => {
+  r.get('/auth/sip', requirePermission('agent.use'), wrap((req, res) => {
     if (req.user!.apiKey) throw badRequest('Not available for API keys');
     const s = getSettings(db);
     const row = getUserRow(db, req.user!.id)!;

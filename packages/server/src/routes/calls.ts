@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { Router } from 'express';
 import multer from 'multer';
 import { callbackUpdateSchema, paginationSchema } from '@opendialer/shared';
-import { requireRole } from '../auth.js';
+import { hasPermission, requireAnyPermission } from '../auth.js';
 import type { Ctx } from '../context.js';
 import { badRequest, forbidden, idParam, parse, wrap } from '../errors.js';
 import { audit } from '../services/audit.js';
@@ -17,7 +17,7 @@ export function callRoutes(ctx: Ctx) {
 
   r.get(
     '/calls',
-    requireRole('agent'),
+    requireAnyPermission('calls.own', 'calls.manage'),
     wrap((req, res) => {
       const { page, pageSize } = parse(paginationSchema, req.query);
       const q = req.query as Record<string, string | undefined>;
@@ -28,7 +28,7 @@ export function callRoutes(ctx: Ctx) {
           {
             campaignId: q.campaignId ? Number(q.campaignId) : undefined,
             // agents only see their own calls
-            userId: u.role === 'agent' ? u.id : q.userId ? Number(q.userId) : undefined,
+            userId: hasPermission(u, 'calls.manage') ? (q.userId ? Number(q.userId) : undefined) : u.id,
             leadId: q.leadId ? Number(q.leadId) : undefined,
             from: q.from || undefined,
             to: q.to || undefined,
@@ -45,10 +45,10 @@ export function callRoutes(ctx: Ctx) {
 
   r.get(
     '/calls/:id',
-    requireRole('agent'),
+    requireAnyPermission('calls.own', 'calls.manage'),
     wrap((req, res) => {
       const call = getCall(db, idParam(req));
-      if (req.user!.role === 'agent' && call.userId !== req.user!.id) throw forbidden();
+      if (!hasPermission(req.user, 'calls.manage') && call.userId !== req.user!.id) throw forbidden();
       res.json(call);
     }),
   );
@@ -56,12 +56,12 @@ export function callRoutes(ctx: Ctx) {
   /** Upload the browser-side recording for a call (multipart "file"). */
   r.post(
     '/calls/:id/recording',
-    requireRole('agent'),
+    requireAnyPermission('calls.own', 'calls.manage'),
     upload.single('file'),
     wrap((req, res) => {
       const id = idParam(req);
       const call = getCall(db, id);
-      if (req.user!.role === 'agent' && call.userId !== req.user!.id) throw forbidden();
+      if (!hasPermission(req.user, 'calls.manage') && call.userId !== req.user!.id) throw forbidden();
       if (!req.file || !req.file.buffer.length) throw badRequest('No audio uploaded');
       const rel = saveRecording(db, ctx.config.dataDir, id, req.file.buffer, req.file.mimetype || 'audio/webm');
       audit(db, req.user!.id, 'recording.upload', 'call', id, { bytes: req.file.size });
@@ -71,11 +71,11 @@ export function callRoutes(ctx: Ctx) {
 
   r.get(
     '/calls/:id/recording',
-    requireRole('agent'),
+    requireAnyPermission('calls.own', 'calls.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       const call = getCall(db, id);
-      if (req.user!.role === 'agent' && call.userId !== req.user!.id) throw forbidden();
+      if (!hasPermission(req.user, 'calls.manage') && call.userId !== req.user!.id) throw forbidden();
       const rec = recordingFile(db, ctx.config.dataDir, id);
       if (!rec) return res.status(404).json({ error: 'No recording' });
       const stat = fs.statSync(rec.file);
@@ -90,11 +90,11 @@ export function callRoutes(ctx: Ctx) {
 
   r.get(
     '/callbacks',
-    requireRole('agent'),
+    requireAnyPermission('callbacks.own', 'callbacks.manage'),
     wrap((req, res) => {
       const q = req.query as Record<string, string | undefined>;
       const u = req.user!;
-      const mine = q.scope !== 'all' || u.role === 'agent';
+      const mine = q.scope !== 'all' || !hasPermission(u, 'callbacks.manage');
       res.json(
         listCallbacks(db, {
           userId: mine ? u.id : q.userId ? Number(q.userId) : undefined,
@@ -106,18 +106,18 @@ export function callRoutes(ctx: Ctx) {
     }),
   );
 
-  r.get('/callbacks/:id', requireRole('agent'), wrap((req, res) => res.json(getCallback(db, idParam(req)))));
+  r.get('/callbacks/:id', requireAnyPermission('callbacks.own', 'callbacks.manage'), wrap((req, res) => res.json(getCallback(db, idParam(req)))));
 
   r.patch(
     '/callbacks/:id',
-    requireRole('agent'),
+    requireAnyPermission('callbacks.own', 'callbacks.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       const existing = getCallback(db, id);
       const u = req.user!;
-      if (u.role === 'agent' && existing.userId !== null && existing.userId !== u.id) throw forbidden('Not your callback');
+      if (!hasPermission(u, 'callbacks.manage') && existing.userId !== null && existing.userId !== u.id) throw forbidden('Not your callback');
       const patch = parse(callbackUpdateSchema, req.body);
-      if (u.role === 'agent' && patch.userId !== undefined && patch.userId !== u.id && patch.userId !== null) throw forbidden('Agents cannot reassign callbacks');
+      if (!hasPermission(u, 'callbacks.manage') && patch.userId !== undefined && patch.userId !== u.id && patch.userId !== null) throw forbidden('You cannot reassign callbacks');
       const cb = updateCallback(db, id, patch);
       audit(db, u.id, 'callback.update', 'callback', id, Object.keys(patch));
       ctx.bus.emitDomain('leads.available', { campaignId: cb.campaignId });

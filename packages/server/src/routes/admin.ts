@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
 import { apiKeyCreateSchema, paginationSchema, webhookCreateSchema, webhookUpdateSchema, WEBHOOK_EVENTS } from '@opendialer/shared';
-import { requireRole } from '../auth.js';
+import { requirePermission } from '../auth.js';
 import type { Ctx } from '../context.js';
 import type { Engine } from '../engine.js';
 import { idParam, notFound, parse, wrap } from '../errors.js';
@@ -15,10 +15,10 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
   const { db } = ctx;
 
   /* ---------- webhooks ---------- */
-  r.get('/webhooks', requireRole('admin'), (_req, res) => res.json({ items: listWebhooks(db), events: WEBHOOK_EVENTS }));
+  r.get('/webhooks', requirePermission('integrations.manage'), (_req, res) => res.json({ items: listWebhooks(db), events: WEBHOOK_EVENTS }));
   r.post(
     '/webhooks',
-    requireRole('admin'),
+    requirePermission('integrations.manage'),
     wrap((req, res) => {
       const h = createWebhook(db, parse(webhookCreateSchema, req.body));
       audit(db, req.user!.id, 'webhook.create', 'webhook', h.id, { url: h.url });
@@ -27,7 +27,7 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
   );
   r.patch(
     '/webhooks/:id',
-    requireRole('admin'),
+    requirePermission('integrations.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       const h = updateWebhook(db, id, parse(webhookUpdateSchema, req.body));
@@ -37,7 +37,7 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
   );
   r.delete(
     '/webhooks/:id',
-    requireRole('admin'),
+    requirePermission('integrations.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       deleteWebhook(db, id);
@@ -47,7 +47,7 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
   );
   r.post(
     '/webhooks/:id/test',
-    requireRole('admin'),
+    requirePermission('integrations.manage'),
     wrap(async (req, res) => {
       const h = getWebhook(db, idParam(req));
       const ok = await deliver(h, 'test', { message: 'OpenDialer webhook test', by: req.user!.username }, ctx.log);
@@ -56,10 +56,10 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
   );
 
   /* ---------- API keys ---------- */
-  r.get('/api-keys', requireRole('admin'), (_req, res) => res.json(listApiKeys(db)));
+  r.get('/api-keys', requirePermission('integrations.manage'), (_req, res) => res.json(listApiKeys(db)));
   r.post(
     '/api-keys',
-    requireRole('admin'),
+    requirePermission('integrations.manage'),
     wrap((req, res) => {
       const { name } = parse(apiKeyCreateSchema, req.body);
       const { key, plaintext } = createApiKey(db, name);
@@ -69,7 +69,7 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
   );
   r.delete(
     '/api-keys/:id',
-    requireRole('admin'),
+    requirePermission('integrations.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       deleteApiKey(db, id);
@@ -81,7 +81,7 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
   /* ---------- audit ---------- */
   r.get(
     '/audit',
-    requireRole('supervisor'),
+    requirePermission('audit.view'),
     wrap((req, res) => {
       const { page, pageSize } = parse(paginationSchema, req.query);
       const q = req.query as Record<string, string | undefined>;
@@ -90,10 +90,10 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
   );
 
   /* ---------- agents (supervisor control) ---------- */
-  r.get('/agents', requireRole('supervisor'), (_req, res) => res.json(engine.snapshot().agents));
+  r.get('/agents', requirePermission('dashboard.view'), (_req, res) => res.json(engine.snapshot().agents));
   r.post(
     '/agents/:id/logout',
-    requireRole('supervisor'),
+    requirePermission('dashboard.view'),
     wrap((req, res) => {
       const id = idParam(req);
       if (!engine.getSession(id)) throw notFound('Agent session');
@@ -106,7 +106,7 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
   /* ---------- backup & health ---------- */
   r.post(
     '/admin/backup',
-    requireRole('admin'),
+    requirePermission('system.manage'),
     wrap(async (req, res) => {
       const dir = path.join(ctx.config.dataDir, 'backups');
       fs.mkdirSync(dir, { recursive: true });
@@ -116,7 +116,7 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
       res.json({ ok: true, file: path.basename(file), bytes: fs.statSync(file).size });
     }),
   );
-  r.get('/admin/backups', requireRole('admin'), (_req, res) => {
+  r.get('/admin/backups', requirePermission('system.manage'), (_req, res) => {
     const dir = path.join(ctx.config.dataDir, 'backups');
     const files = fs.existsSync(dir)
       ? fs
@@ -129,7 +129,7 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
   });
   r.get(
     '/admin/backups/:file',
-    requireRole('admin'),
+    requirePermission('backups.export'),
     wrap((req, res) => {
       const name = path.basename(String(req.params.file));
       const file = path.join(ctx.config.dataDir, 'backups', name);
@@ -138,7 +138,7 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
     }),
   );
 
-  r.get('/admin/system', requireRole('admin'), (_req, res) => {
+  r.get('/admin/system', requirePermission('system.manage'), (_req, res) => {
     const dbFile = path.join(ctx.config.dataDir, 'opendialer.sqlite');
     res.json({
       version: ctx.config.version,

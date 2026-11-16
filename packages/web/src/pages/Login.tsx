@@ -5,7 +5,7 @@ import { Brand, ThemeToggle } from '../components/Chrome';
 import { Field } from '../components/ui';
 import { describeError } from '../lib/api';
 import { displayServerUrl, setServerUrl } from '../lib/config';
-import { hasRole, useAuth } from '../store/auth';
+import { adminPathFor, hasPermission, useAuth } from '../store/auth';
 
 export function LoginPage() {
   const user = useAuth((s) => s.user);
@@ -22,7 +22,7 @@ export function LoginPage() {
 
   if (user) {
     const from = (loc.state as { from?: string } | null)?.from;
-    return <Navigate to={from && from !== '/login' ? from : hasRole(user, 'supervisor') ? '/admin/dashboard' : '/agent'} replace />;
+    return <Navigate to={from && from !== '/login' ? from : adminPathFor(user) ?? (hasPermission(user, 'agent.use') ? '/agent' : '/no-access')} replace />;
   }
 
   const submit = async (e: FormEvent) => {

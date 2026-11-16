@@ -3,6 +3,7 @@ import type { Campaign } from '@opendialer/shared';
 import { ErrorBox, useLoad } from '../../components/ui';
 import { api, describeError, downloadFile } from '../../lib/api';
 import { fmtDuration, fmtPct, toDateInput } from '../../lib/format';
+import { hasPermission, useAuth } from '../../store/auth';
 import { toast } from '../../store/toasts';
 
 interface CampaignRow {
@@ -51,6 +52,9 @@ function rangeIso(from: string, to: string) {
 }
 
 export default function Reports() {
+  const user = useAuth((s) => s.user);
+  const canExportCalls = hasPermission(user, 'calls.export');
+  const canExportLeads = hasPermission(user, 'leads.export');
   const today = toDateInput(new Date());
   const [from, setFrom] = useState(toDateInput(new Date(Date.now() - 6 * 86400000)));
   const [to, setTo] = useState(today);
@@ -87,14 +91,20 @@ export default function Reports() {
     <div className="stack">
       <div className="page-head">
         <h1>Reports</h1>
-        <div className="row">
-          <button type="button" className="btn" onClick={() => void exportCsv('calls')}>
-            Export calls CSV
-          </button>
-          <button type="button" className="btn" onClick={() => void exportCsv('leads')}>
-            Export leads CSV
-          </button>
-        </div>
+        {(canExportCalls || canExportLeads) && (
+          <div className="row">
+            {canExportCalls && (
+              <button type="button" className="btn" onClick={() => void exportCsv('calls')}>
+                Export calls CSV
+              </button>
+            )}
+            {canExportLeads && (
+              <button type="button" className="btn" onClick={() => void exportCsv('leads')}>
+                Export leads CSV
+              </button>
+            )}
+          </div>
+        )}
       </div>
       <div className="row">
         <label className="row">

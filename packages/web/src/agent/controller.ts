@@ -298,7 +298,7 @@ export class AgentController {
       return;
     }
     try {
-      const c = this.deps.loadCampaign ? await this.deps.loadCampaign(id) : await api.get<JoinedCampaign>(`/campaigns/${id}`);
+      const c = this.deps.loadCampaign ? await this.deps.loadCampaign(id) : await api.get<JoinedCampaign>(`/campaigns/${id}/work`);
       this.set({ campaign: c, recordToggle: c.recording === 'always' ? true : this.view.recordToggle });
     } catch (err) {
       this.notify('warning', `Could not load campaign: ${describeError(err)}`);

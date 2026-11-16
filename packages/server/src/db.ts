@@ -197,6 +197,97 @@ CREATE TABLE webhooks (
 );
 `,
   },
+  {
+    id: 2,
+    sql: `
+CREATE TABLE custom_roles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  description TEXT NOT NULL DEFAULT '',
+  permissions TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+ALTER TABLE users ADD COLUMN custom_role_id INTEGER REFERENCES custom_roles(id) ON DELETE SET NULL;
+CREATE INDEX idx_users_custom_role ON users(custom_role_id);
+`,
+  },
+  {
+    id: 3,
+    sql: `
+UPDATE custom_roles
+SET permissions = json_insert(
+      permissions,
+      '$[#]', 'campaigns.tabs.overview.view',
+      '$[#]', 'campaigns.tabs.lists.view',
+      '$[#]', 'campaigns.tabs.leads.view',
+      '$[#]', 'campaigns.tabs.agents.view',
+      '$[#]', 'campaigns.tabs.settings.view'
+    ),
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE json_valid(permissions)
+  AND EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value = 'campaigns.manage');
+`,
+  },
+  {
+    id: 4,
+    sql: `
+UPDATE custom_roles
+SET permissions = (
+      SELECT json_group_array(value)
+      FROM (
+        SELECT value
+        FROM json_each(custom_roles.permissions)
+        WHERE value <> 'campaigns.manage'
+        UNION SELECT 'campaigns.work'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.view'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.create'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.edit'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.status.activate'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.status.pause'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.status.complete'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.status.draft'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.lists.view'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete', 'campaigns.tabs.lists.view', 'campaigns.tabs.leads.view'))
+        UNION SELECT 'campaigns.lists.create'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.lists.edit'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.lists.delete'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.lists.import'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value = 'leads.manage')
+        UNION SELECT 'campaigns.agents.view'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value = 'campaigns.tabs.agents.view')
+        UNION SELECT 'campaigns.agents.assign'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.agents.unassign'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+        UNION SELECT 'campaigns.leads.view'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value = 'campaigns.tabs.leads.view')
+        UNION SELECT 'campaigns.leads.reset'
+          WHERE EXISTS (SELECT 1 FROM json_each(custom_roles.permissions) WHERE value IN ('campaigns.manage', 'campaigns.delete'))
+      )
+    ),
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE json_valid(permissions)
+  AND EXISTS (
+    SELECT 1 FROM json_each(custom_roles.permissions)
+    WHERE value IN (
+      'campaigns.manage', 'campaigns.delete', 'leads.manage',
+      'campaigns.tabs.lists.view', 'campaigns.tabs.leads.view', 'campaigns.tabs.agents.view'
+    )
+  );
+`,
+  },
 ];
 
 export function openDatabase(file: string): DB {

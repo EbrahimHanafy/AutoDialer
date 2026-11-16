@@ -6,7 +6,7 @@ import { useAgent } from '../../agent/store';
 import { Brand, ThemeToggle } from '../../components/Chrome';
 import { ErrorBox, Modal, Spinner, useLoad } from '../../components/ui';
 import { api } from '../../lib/api';
-import { hasRole, useAuth } from '../../store/auth';
+import { hasPermission, useAuth } from '../../store/auth';
 import { CallControls } from './CallControls';
 import { CallbacksPanel, RecentCalls } from './SidePanels';
 import { LeadCard, ScriptPanel } from './LeadCard';
@@ -162,7 +162,7 @@ export default function AgentConsole() {
         <span className="spacer" />
         <ConnPill />
         <PhonePill />
-        {hasRole(user, 'supervisor') && (
+        {hasPermission(user, 'dashboard.view') && (
           <Link className="btn small" to="/admin/dashboard">
             Admin
           </Link>

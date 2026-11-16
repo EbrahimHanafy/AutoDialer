@@ -1,26 +1,36 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import type { Campaign, CampaignStats, CampaignStatus, LeadList, LeadStatus, Script, User } from '@opendialer/shared';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { CAMPAIGN_TAB_PERMISSIONS, type Campaign, type CampaignStats, type CampaignStatus, type LeadList, type LeadStatus, type Permission, type Script, type User } from '@opendialer/shared';
 import { Empty, ErrorBox, Loading, Modal, Tabs, confirmDialog, useLoad } from '../../components/ui';
 import { api, describeError, downloadFile } from '../../lib/api';
 import { fmtDateTime, fmtDuration } from '../../lib/format';
-import { hasRole, useAuth } from '../../store/auth';
+import { hasPermission, useAuth } from '../../store/auth';
 import { toast } from '../../store/toasts';
 import { CampaignForm, DAY_NAMES, campaignToInput } from './CampaignForm';
 import { StatusBadge } from './Campaigns';
 import { ImportWizard } from './ImportWizard';
 import { LEAD_STATUSES, LeadsTable } from './LeadsTable';
 
-type Full = Campaign & { script: Script | null; agentIds: number[] };
-type Tab = 'overview' | 'lists' | 'leads' | 'agents' | 'settings';
+type CampaignHeader = Pick<Campaign, 'id' | 'name' | 'status' | 'createdAt' | 'updatedAt'> & { agentCount?: number };
+type CampaignDetailData = { campaign: Campaign; script: Script | null };
+type Tab = keyof typeof CAMPAIGN_TAB_PERMISSIONS;
+const CAMPAIGN_TABS: { id: Tab; label: string; permission: Permission }[] = [
+  { id: 'overview', label: 'Overview', permission: CAMPAIGN_TAB_PERMISSIONS.overview },
+  { id: 'lists', label: 'Lists & import', permission: CAMPAIGN_TAB_PERMISSIONS.lists },
+  { id: 'leads', label: 'Leads', permission: CAMPAIGN_TAB_PERMISSIONS.leads },
+  { id: 'agents', label: 'Agents', permission: CAMPAIGN_TAB_PERMISSIONS.agents },
+  { id: 'settings', label: 'Settings', permission: CAMPAIGN_TAB_PERMISSIONS.settings },
+];
 
-function Overview({ c }: { c: Full }) {
-  const { data, error, reload } = useLoad(() => api.get<CampaignStats>(`/campaigns/${c.id}/stats`), [c.id]);
+function Overview({ campaignId }: { campaignId: number }) {
+  const details = useLoad(() => api.get<CampaignDetailData>(`/campaigns/${campaignId}/overview`), [campaignId]);
+  const { data, error, reload } = useLoad(() => api.get<CampaignStats>(`/campaigns/${campaignId}/stats`), [campaignId]);
   useEffect(() => {
     const t = setInterval(() => void reload(), 10000);
     return () => clearInterval(t);
   }, [reload]);
   const s = data;
+  const c = details.data ? { ...details.data.campaign, script: details.data.script } : null;
   const stat = (label: string, value: string | number) => (
     <div className="stat">
       <div className="label">{label}</div>
@@ -29,6 +39,7 @@ function Overview({ c }: { c: Full }) {
   );
   return (
     <div className="stack">
+      <ErrorBox error={details.error} onRetry={details.reload} />
       <ErrorBox error={error} onRetry={reload} />
       {s && (
         <>
@@ -55,7 +66,7 @@ function Overview({ c }: { c: Full }) {
           </div>
         </>
       )}
-      <div className="card">
+      {c && <div className="card">
         <h3>Configuration</h3>
         <dl className="kv">
           <dt>Dial mode</dt>
@@ -83,12 +94,12 @@ function Overview({ c }: { c: Full }) {
             </>
           )}
         </dl>
-      </div>
+      </div>}
     </div>
   );
 }
 
-function ResetDialog({ c, lists, onClose }: { c: Full; lists: LeadList[]; onClose: () => void }) {
+function ResetDialog({ campaignId, lists, onClose }: { campaignId: number; lists: LeadList[]; onClose: () => void }) {
   const [listId, setListId] = useState('');
   const [statuses, setStatuses] = useState<LeadStatus[]>(['done', 'callback', 'invalid']);
   const [busy, setBusy] = useState(false);
@@ -100,7 +111,7 @@ function ResetDialog({ c, lists, onClose }: { c: Full; lists: LeadList[]; onClos
           e.preventDefault();
           setBusy(true);
           try {
-            const r = await api.post<{ changed: number }>(`/campaigns/${c.id}/reset-leads`, {
+            const r = await api.post<{ changed: number }>(`/campaigns/${campaignId}/reset-leads`, {
               listId: listId ? Number(listId) : undefined,
               onlyStatus: statuses.length ? statuses : undefined,
             });
@@ -149,8 +160,15 @@ function ResetDialog({ c, lists, onClose }: { c: Full; lists: LeadList[]; onClos
   );
 }
 
-function Lists({ c }: { c: Full }) {
-  const { data, error, reload } = useLoad(() => api.get<LeadList[]>(`/campaigns/${c.id}/lists`), [c.id]);
+function Lists({ campaignId }: { campaignId: number }) {
+  const user = useAuth((s) => s.user);
+  const canView = hasPermission(user, 'campaigns.lists.view');
+  const canCreate = hasPermission(user, 'campaigns.lists.create');
+  const canEdit = hasPermission(user, 'campaigns.lists.edit');
+  const canDelete = hasPermission(user, 'campaigns.lists.delete');
+  const canImport = hasPermission(user, 'campaigns.lists.import');
+  const canReset = hasPermission(user, 'campaigns.leads.reset');
+  const { data, error, reload } = useLoad(() => canView ? api.get<LeadList[]>(`/campaigns/${campaignId}/lists`) : Promise.resolve([]), [campaignId, canView]);
   const [name, setName] = useState('');
   const [importing, setImporting] = useState<LeadList | null>(null);
   const [resetting, setResetting] = useState(false);
@@ -159,7 +177,7 @@ function Lists({ c }: { c: Full }) {
   const create = async () => {
     if (!name.trim()) return;
     try {
-      await api.post(`/campaigns/${c.id}/lists`, { name: name.trim() });
+      await api.post(`/campaigns/${campaignId}/lists`, { name: name.trim() });
       setName('');
       toast.success('List created');
       void reload();
@@ -178,17 +196,25 @@ function Lists({ c }: { c: Full }) {
           void create();
         }}
       >
-        <input aria-label="New list name" style={{ maxWidth: 280 }} placeholder="New list name" value={name} onChange={(e) => setName(e.target.value)} />
-        <button type="submit" className="btn primary" disabled={!name.trim()}>
-          Create list
-        </button>
+        {canCreate && (
+          <>
+            <input aria-label="New list name" style={{ maxWidth: 280 }} placeholder="New list name" value={name} onChange={(e) => setName(e.target.value)} />
+            <button type="submit" className="btn primary" disabled={!name.trim()}>
+              Create list
+            </button>
+          </>
+        )}
         <span className="grow" />
-        <button type="button" className="btn" onClick={() => setResetting(true)}>
-          Reset leads…
-        </button>
-        <button type="button" className="btn" onClick={() => void downloadFile('/reports/export/leads.csv', { campaignId: c.id }, `leads-${c.id}.csv`).catch((e) => toast.error(describeError(e)))}>
-          Export leads CSV
-        </button>
+        {canReset && (
+          <button type="button" className="btn" onClick={() => setResetting(true)}>
+            Reset leads…
+          </button>
+        )}
+        {hasPermission(user, 'leads.export') && (
+          <button type="button" className="btn" onClick={() => void downloadFile('/reports/export/leads.csv', { campaignId }, `leads-${campaignId}.csv`).catch((e) => toast.error(describeError(e)))}>
+            Export leads CSV
+          </button>
+        )}
       </form>
       <div className="table-wrap">
         <table>
@@ -211,6 +237,7 @@ function Lists({ c }: { c: Full }) {
                     type="checkbox"
                     aria-label={`List ${l.name} active`}
                     checked={l.active}
+                    disabled={!canEdit}
                     onChange={async (e) => {
                       try {
                         await api.patch(`/lists/${l.id}`, { active: e.target.checked });
@@ -223,48 +250,64 @@ function Lists({ c }: { c: Full }) {
                 </td>
                 <td className="nowrap">{fmtDateTime(l.createdAt)}</td>
                 <td className="actions">
-                  <button type="button" className="btn small primary" onClick={() => setImporting(l)}>
-                    Import CSV
-                  </button>
-                  <button
-                    type="button"
-                    className="btn small ghost"
-                    onClick={async () => {
-                      if (!(await confirmDialog({ title: `Delete list "${l.name}"?`, message: `All ${l.leadCount} leads in it are deleted.`, confirmLabel: 'Delete', danger: true }))) return;
-                      try {
-                        await api.del(`/lists/${l.id}`);
-                        void reload();
-                      } catch (err) {
-                        toast.error(describeError(err));
-                      }
-                    }}
-                  >
-                    Delete
-                  </button>
+                  {canImport && (
+                    <button type="button" className="btn small primary" onClick={() => setImporting(l)}>
+                      Import CSV
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      type="button"
+                      className="btn small ghost"
+                      onClick={async () => {
+                        if (!(await confirmDialog({ title: `Delete list "${l.name}"?`, message: `All ${l.leadCount} leads in it are deleted.`, confirmLabel: 'Delete', danger: true }))) return;
+                        try {
+                          await api.del(`/lists/${l.id}`);
+                          void reload();
+                        } catch (err) {
+                          toast.error(describeError(err));
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {lists.length === 0 && <Empty>No lists yet. Create a list, then import a CSV into it.</Empty>}
+        {lists.length === 0 && <Empty>{canView ? (canCreate ? 'No lists yet. Create a list, then import a CSV into it.' : 'No lists yet.') : 'You do not have permission to view campaign lists.'}</Empty>}
       </div>
       {importing && <ImportWizard list={importing} onClose={() => setImporting(null)} onDone={() => void reload()} />}
-      {resetting && <ResetDialog c={c} lists={lists} onClose={() => setResetting(false)} />}
+      {resetting && <ResetDialog campaignId={campaignId} lists={lists} onClose={() => setResetting(false)} />}
     </div>
   );
 }
 
-function LeadsTab({ c }: { c: Full }) {
-  const lists = useLoad(() => api.get<LeadList[]>(`/campaigns/${c.id}/lists`), [c.id]);
-  return <LeadsTable campaignId={c.id} lists={lists.data ?? []} />;
+function LeadsTab({ campaignId }: { campaignId: number }) {
+  const user = useAuth((s) => s.user);
+  const canView = hasPermission(user, 'campaigns.leads.view');
+  const canViewLists = hasPermission(user, 'campaigns.lists.view');
+  const lists = useLoad(() => canViewLists ? api.get<LeadList[]>(`/campaigns/${campaignId}/lists`) : Promise.resolve([]), [campaignId, canViewLists]);
+  if (!canView) return <Empty>You do not have permission to view campaign leads.</Empty>;
+  return <LeadsTable campaignId={campaignId} lists={lists.data ?? []} />;
 }
 
-function Agents({ c, onSaved }: { c: Full; onSaved: () => void }) {
-  const { data, error, reload } = useLoad(() => api.get<User[]>('/users'), []);
-  const [sel, setSel] = useState<number[]>(c.agentIds);
+function Agents({ campaignId }: { campaignId: number }) {
+  const user = useAuth((s) => s.user);
+  const canView = hasPermission(user, 'campaigns.agents.view');
+  const canAssign = hasPermission(user, 'campaigns.agents.assign');
+  const canUnassign = hasPermission(user, 'campaigns.agents.unassign');
+  const { data, error, reload } = useLoad(
+    () => canView ? api.get<{ agentIds: number[]; agents: User[] }>(`/campaigns/${campaignId}/agents`) : Promise.resolve({ agentIds: [], agents: [] }),
+    [campaignId, canView],
+  );
+  const agents = data?.agents ?? [];
+  const [sel, setSel] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
-  useEffect(() => setSel(c.agentIds), [c.agentIds]);
-  const agents = (data ?? []).filter((u) => u.role === 'agent');
+  useEffect(() => setSel(data?.agentIds ?? []), [data]);
+  if (!canView) return <Empty>You do not have permission to view assigned agents.</Empty>;
   return (
     <div className="stack">
       <ErrorBox error={error} onRetry={reload} />
@@ -272,26 +315,29 @@ function Agents({ c, onSaved }: { c: Full; onSaved: () => void }) {
       <div className="card">
         {agents.length === 0 && <p className="muted">No agent users yet – create them under Users.</p>}
         <div className="stack tight">
-          {agents.map((u) => (
-            <label key={u.id} className="check">
-              <input type="checkbox" checked={sel.includes(u.id)} onChange={(e) => setSel(e.target.checked ? [...sel, u.id] : sel.filter((x) => x !== u.id))} />
-              {u.displayName} <span className="muted small">({u.username})</span>
-              {!u.active && <span className="badge red">inactive</span>}
-            </label>
-          ))}
+          {agents.map((u) => {
+            const wasAssigned = Boolean(data?.agentIds.includes(u.id));
+            return (
+              <label key={u.id} className="check">
+                <input type="checkbox" checked={sel.includes(u.id)} disabled={wasAssigned ? !canUnassign : !canAssign} onChange={(e) => setSel(e.target.checked ? [...sel, u.id] : sel.filter((x) => x !== u.id))} />
+                {u.displayName} <span className="muted small">({u.username})</span>
+                {!u.active && <span className="badge red">inactive</span>}
+              </label>
+            );
+          })}
         </div>
-        {agents.length > 0 && (
+        {(canAssign || canUnassign) && agents.length > 0 && (
           <div className="row" style={{ marginTop: '0.75rem' }}>
-            <button type="button" className="btn small" onClick={() => setSel(agents.map((a) => a.id))}>
+            <button type="button" className="btn small" disabled={!canAssign} onClick={() => setSel(agents.map((a) => a.id))}>
               Select all
             </button>
-            <button type="button" className="btn small" onClick={() => setSel([])}>
+            <button type="button" className="btn small" disabled={!canUnassign} onClick={() => setSel([])}>
               Clear
             </button>
           </div>
         )}
       </div>
-      <div className="form-actions">
+      {(canAssign || canUnassign) && <div className="form-actions">
         <button
           type="button"
           className="btn primary"
@@ -299,9 +345,9 @@ function Agents({ c, onSaved }: { c: Full; onSaved: () => void }) {
           onClick={async () => {
             setBusy(true);
             try {
-              await api.put(`/campaigns/${c.id}/agents`, { userIds: sel });
+              await api.put(`/campaigns/${campaignId}/agents`, { userIds: sel });
               toast.success('Agents saved');
-              onSaved();
+              void reload();
             } catch (err) {
               toast.error(describeError(err));
             } finally {
@@ -311,7 +357,52 @@ function Agents({ c, onSaved }: { c: Full; onSaved: () => void }) {
         >
           Save agents
         </button>
-      </div>
+      </div>}
+    </div>
+  );
+}
+
+function CampaignSettings({ campaignId }: { campaignId: number }) {
+  const user = useAuth((s) => s.user);
+  const canEdit = hasPermission(user, 'campaigns.edit');
+  const details = useLoad(() => api.get<CampaignDetailData>(`/campaigns/${campaignId}/settings`), [campaignId]);
+  const c = details.data?.campaign;
+  return (
+    <div className="stack">
+      <ErrorBox error={details.error} onRetry={details.reload} />
+      {c && canEdit && (
+        <div className="card">
+          <CampaignForm
+            key={c.updatedAt}
+            initial={campaignToInput(c)}
+            submitLabel="Save settings"
+            onSubmit={async (value) => {
+              await api.patch(`/campaigns/${c.id}`, value);
+              toast.success('Campaign saved');
+              void details.reload();
+            }}
+          />
+        </div>
+      )}
+      {c && !canEdit && (
+        <div className="card">
+          <dl className="kv">
+            <dt>Description</dt><dd>{c.description || '—'}</dd>
+            <dt>Dial mode</dt><dd>{c.dialMode}</dd>
+            <dt>Caller ID</dt><dd>{c.callerId || '—'}</dd>
+            <dt>Dial prefix</dt><dd>{c.dialPrefix || '—'}</dd>
+            <dt>Script</dt><dd>{details.data?.script?.name ?? '—'}</dd>
+            <dt>Calling hours</dt><dd>{c.callingHoursStart === c.callingHoursEnd ? 'All day' : `${c.callingHoursStart}–${c.callingHoursEnd}`}</dd>
+            <dt>Calling days</dt><dd>{c.callingDays.map((day) => DAY_NAMES[day]).join(', ')}</dd>
+            <dt>Timezone</dt><dd>{c.timezoneMode === 'lead' ? `Lead timezone (fallback ${c.fixedTimezone})` : c.fixedTimezone}</dd>
+            <dt>Max attempts</dt><dd>{c.maxAttempts}</dd>
+            <dt>Retry after</dt><dd>{c.retryMinutes} minutes</dd>
+            <dt>Preview timeout</dt><dd>{c.previewTimeoutSec} seconds</dd>
+            <dt>Wrap-up timeout</dt><dd>{c.wrapupTimeoutSec} seconds</dd>
+            <dt>Recording</dt><dd>{c.recording}</dd>
+          </dl>
+        </div>
+      )}
     </div>
   );
 }
@@ -319,9 +410,21 @@ function Agents({ c, onSaved }: { c: Full; onSaved: () => void }) {
 export default function CampaignDetail() {
   const { id } = useParams();
   const nav = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuth((s) => s.user);
-  const { data: c, error, reload, loading } = useLoad(() => api.get<Full>(`/campaigns/${id}`), [id]);
-  const [tab, setTab] = useState<Tab>('overview');
+  const allowedTabs = CAMPAIGN_TABS.filter((item) => hasPermission(user, item.permission));
+  const requestedTab = searchParams.get('tab') as Tab | null;
+  const tab = allowedTabs.some((item) => item.id === requestedTab) ? requestedTab! : allowedTabs[0]?.id;
+  const { data: c, error, reload, loading } = useLoad(() => api.get<CampaignHeader>(`/campaigns/${id}`), [id]);
+  const canActivate = hasPermission(user, 'campaigns.status.activate');
+  const canPause = hasPermission(user, 'campaigns.status.pause');
+  const canComplete = hasPermission(user, 'campaigns.status.complete');
+
+  useEffect(() => {
+    if (tab && requestedTab !== tab) setSearchParams({ tab }, { replace: true });
+  }, [requestedTab, setSearchParams, tab]);
+
+  if (!tab) return <Navigate to="/admin/campaigns" replace />;
 
   if (!c) return loading ? <Loading /> : <ErrorBox error={error ?? 'Not found'} onRetry={reload} />;
 
@@ -343,17 +446,17 @@ export default function CampaignDetail() {
           <StatusBadge status={c.status} />
         </div>
         <div className="row">
-          {c.status !== 'active' && (
+          {canActivate && c.status !== 'active' && (
             <button type="button" className="btn success" onClick={() => void setStatus('active')}>
               Activate
             </button>
           )}
-          {c.status === 'active' && (
+          {canPause && c.status === 'active' && (
             <button type="button" className="btn warning" onClick={() => void setStatus('paused')}>
               Pause
             </button>
           )}
-          {c.status !== 'completed' && (
+          {canComplete && c.status !== 'completed' && (
             <button
               type="button"
               className="btn"
@@ -364,7 +467,7 @@ export default function CampaignDetail() {
               Complete
             </button>
           )}
-          {hasRole(user, 'admin') && (
+          {hasPermission(user, 'campaigns.delete') && (
             <button
               type="button"
               className="btn ghost"
@@ -385,33 +488,14 @@ export default function CampaignDetail() {
       </div>
       <Tabs<Tab>
         value={tab}
-        onChange={setTab}
-        tabs={[
-          { id: 'overview', label: 'Overview' },
-          { id: 'lists', label: 'Lists & import' },
-          { id: 'leads', label: 'Leads' },
-          { id: 'agents', label: `Agents (${c.agentIds.length})` },
-          { id: 'settings', label: 'Settings' },
-        ]}
+        onChange={(next) => setSearchParams({ tab: next })}
+        tabs={allowedTabs.map(({ id: tabId, label }) => ({ id: tabId, label: tabId === 'agents' && c.agentCount != null ? `${label} (${c.agentCount})` : label }))}
       />
-      {tab === 'overview' && <Overview c={c} />}
-      {tab === 'lists' && <Lists c={c} />}
-      {tab === 'leads' && <LeadsTab c={c} />}
-      {tab === 'agents' && <Agents c={c} onSaved={() => void reload()} />}
-      {tab === 'settings' && (
-        <div className="card">
-          <CampaignForm
-            key={c.updatedAt}
-            initial={campaignToInput(c)}
-            submitLabel="Save settings"
-            onSubmit={async (v) => {
-              await api.patch(`/campaigns/${c.id}`, v);
-              toast.success('Campaign saved');
-              void reload();
-            }}
-          />
-        </div>
-      )}
+      {tab === 'overview' && <Overview campaignId={c.id} />}
+      {tab === 'lists' && <Lists campaignId={c.id} />}
+      {tab === 'leads' && <LeadsTab campaignId={c.id} />}
+      {tab === 'agents' && <Agents campaignId={c.id} />}
+      {tab === 'settings' && <CampaignSettings campaignId={c.id} />}
     </div>
   );
 }

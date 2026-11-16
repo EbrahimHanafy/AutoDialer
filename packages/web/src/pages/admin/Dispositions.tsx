@@ -3,7 +3,7 @@ import { dispositionCreateSchema, type Disposition, type DispositionCreateInput 
 import { ErrorBox, Field, Modal, confirmDialog, useLoad } from '../../components/ui';
 import { api, describeError } from '../../lib/api';
 import { zodIssues } from '../../lib/format';
-import { hasRole, useAuth } from '../../store/auth';
+import { hasPermission, useAuth } from '../../store/auth';
 import { toast } from '../../store/toasts';
 
 const CATS = ['contact', 'no_contact', 'callback', 'dnc', 'invalid'] as const;
@@ -81,7 +81,7 @@ function Editor({ initial, id, onClose, onSaved }: { initial: DispositionCreateI
 
 export default function Dispositions() {
   const user = useAuth((s) => s.user);
-  const admin = hasRole(user, 'admin');
+  const admin = hasPermission(user, 'dispositions.manage');
   const { data, error, reload } = useLoad(() => api.get<Disposition[]>('/dispositions'), []);
   const [editing, setEditing] = useState<{ id: number | null; v: DispositionCreateInput } | null>(null);
   return (

@@ -3,6 +3,7 @@
  * web client reuses them for form validation so both sides agree.
  */
 import { z } from 'zod';
+import { PERMISSION_KEYS } from './permissions.js';
 
 type StripDefaults<T extends z.ZodRawShape> = { [K in keyof T]: T[K] extends z.ZodDefault<infer U> ? U : T[K] };
 
@@ -20,6 +21,8 @@ export function partialUpdate<T extends z.ZodRawShape>(schema: z.ZodObject<T>) {
 }
 
 export const roleSchema = z.enum(['admin', 'supervisor', 'agent']);
+export const permissionSchema = z.enum(PERMISSION_KEYS as [string, ...string[]]);
+export const roleKeySchema = z.string().regex(/^(system:(admin|supervisor|agent)|custom:[1-9]\d*)$/);
 export const dialModeSchema = z.enum(['manual', 'preview', 'progressive']);
 export const campaignStatusSchema = z.enum(['draft', 'active', 'paused', 'completed']);
 export const recordingPolicySchema = z.enum(['off', 'always', 'agent']);
@@ -53,6 +56,7 @@ export const userCreateSchema = z.object({
   password: z.string().min(8).max(200),
   displayName: z.string().min(1).max(80),
   role: roleSchema.default('agent'),
+  roleKey: roleKeySchema.optional(),
   active: z.boolean().default(true),
   sipUsername: z.string().max(120).nullable().optional(),
   sipAuthUsername: z.string().max(120).nullable().optional(),
@@ -60,6 +64,13 @@ export const userCreateSchema = z.object({
 });
 
 export const userUpdateSchema = partialUpdate(userCreateSchema);
+
+export const customRoleCreateSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(500).default(''),
+  permissions: z.array(permissionSchema).default([]),
+});
+export const customRoleUpdateSchema = partialUpdate(customRoleCreateSchema);
 
 export const iceServerSchema = z.object({
   urls: z.string().min(1),
@@ -211,6 +222,8 @@ export type SetupInput = z.infer<typeof setupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UserCreateInput = z.infer<typeof userCreateSchema>;
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
+export type CustomRoleCreateInput = z.infer<typeof customRoleCreateSchema>;
+export type CustomRoleUpdateInput = z.infer<typeof customRoleUpdateSchema>;
 export type CampaignCreateInput = z.infer<typeof campaignCreateSchema>;
 export type CampaignUpdateInput = z.infer<typeof campaignUpdateSchema>;
 export type LeadCreateInput = z.infer<typeof leadCreateSchema>;

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { dncCreateSchema, normalizePhone, paginationSchema } from '@opendialer/shared';
-import { requireRole } from '../auth.js';
+import { requireAnyPermission, requirePermission } from '../auth.js';
 import type { Ctx } from '../context.js';
 import { badRequest, idParam, parse, wrap } from '../errors.js';
 import { audit } from '../services/audit.js';
@@ -16,7 +16,7 @@ export function dncRoutes(ctx: Ctx) {
 
   r.get(
     '/dnc',
-    requireRole('agent'),
+    requireAnyPermission('dnc.work', 'dnc.manage'),
     wrap((req, res) => {
       const { page, pageSize } = parse(paginationSchema, req.query);
       res.json(listDnc(db, String(req.query.q ?? '').trim(), page, pageSize));
@@ -25,7 +25,7 @@ export function dncRoutes(ctx: Ctx) {
 
   r.get(
     '/dnc/check',
-    requireRole('agent'),
+    requireAnyPermission('dnc.work', 'dnc.manage'),
     wrap((req, res) => {
       const n = normalizePhone(String(req.query.phone ?? ''), getSettings(db).defaultCountry);
       if (!n.e164) throw badRequest('Invalid phone number');
@@ -36,7 +36,7 @@ export function dncRoutes(ctx: Ctx) {
   // agents may add numbers (a customer asking not to be called must be honoured immediately)
   r.post(
     '/dnc',
-    requireRole('agent'),
+    requireAnyPermission('dnc.work', 'dnc.manage'),
     wrap((req, res) => {
       const input = parse(dncCreateSchema, req.body);
       const e = addDnc(db, input.phone, `user:${req.user!.username}`, input.note, getSettings(db).defaultCountry);
@@ -48,7 +48,7 @@ export function dncRoutes(ctx: Ctx) {
 
   r.post(
     '/dnc/import',
-    requireRole('supervisor'),
+    requirePermission('dnc.manage'),
     upload.single('file'),
     wrap((req, res) => {
       const text: string = req.file ? req.file.buffer.toString('utf8') : typeof req.body?.csv === 'string' ? req.body.csv : '';
@@ -65,7 +65,7 @@ export function dncRoutes(ctx: Ctx) {
 
   r.delete(
     '/dnc/:id',
-    requireRole('admin'),
+    requirePermission('dnc.delete'),
     wrap((req, res) => {
       const e = removeDnc(db, idParam(req));
       audit(db, req.user!.id, 'dnc.remove', 'dnc', e.id, { phone: e.phone });

@@ -3,7 +3,7 @@ import { dncCreateSchema, formatPhone, type DncEntry, type Paginated } from '@op
 import { Empty, ErrorBox, Pager, confirmDialog, useLoad } from '../../components/ui';
 import { api, describeError } from '../../lib/api';
 import { fmtDateTime } from '../../lib/format';
-import { hasRole, useAuth } from '../../store/auth';
+import { hasPermission, useAuth } from '../../store/auth';
 import { toast } from '../../store/toasts';
 
 export default function Dnc() {
@@ -69,7 +69,7 @@ export default function Dnc() {
             Add to DNC
           </button>
         </form>
-        {hasRole(user, 'supervisor') && (
+        {hasPermission(user, 'dnc.manage') && (
           <div className="card stack">
             <h3>Import</h3>
             <p className="muted small">CSV or text file, one number per line or cell.</p>
@@ -132,7 +132,7 @@ export default function Dnc() {
                 <td>{d.note}</td>
                 <td className="nowrap">{fmtDateTime(d.createdAt)}</td>
                 <td className="actions">
-                  {hasRole(user, 'admin') && (
+                  {hasPermission(user, 'dnc.delete') && (
                     <button
                       type="button"
                       className="btn small ghost"
