@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { setTheme, useTheme, type ThemeChoice } from '../lib/theme';
-import { hasRole, useAuth } from '../store/auth';
+import { adminPathFor, hasPermission, useAuth } from '../store/auth';
 
 export function ThemeToggle() {
   const theme = useTheme();
@@ -37,10 +37,10 @@ export function TopBar({ children }: { children?: ReactNode }) {
   const nav = useNavigate();
   return (
     <header className="topbar">
-      <Brand to={hasRole(user, 'supervisor') ? '/admin/dashboard' : '/agent'} />
+      <Brand to={adminPathFor(user) ?? '/agent'} />
       {children}
       <span className="spacer" />
-      {hasRole(user, 'supervisor') && (
+      {hasPermission(user, 'agent.use') && (
         <Link className="btn small" to="/agent">
           Agent console
         </Link>

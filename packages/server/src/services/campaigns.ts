@@ -66,6 +66,18 @@ export function campaignsForUser(db: DB, userId: number, role: string): Campaign
   ).map(mapCampaign);
 }
 
+/** Assigned campaigns for read-only campaign-detail viewers, including draft and completed campaigns. */
+export function campaignsAssignedToUser(db: DB, userId: number): Campaign[] {
+  return (
+    db
+      .prepare(
+        `SELECT c.* FROM campaigns c JOIN campaign_agents ca ON ca.campaign_id = c.id
+         WHERE ca.user_id = ? ORDER BY c.status = 'active' DESC, c.name`,
+      )
+      .all(userId) as CampaignRow[]
+  ).map(mapCampaign);
+}
+
 export function findCampaign(db: DB, id: number): Campaign | null {
   const r = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id) as CampaignRow | undefined;
   return r ? mapCampaign(r) : null;

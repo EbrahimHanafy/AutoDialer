@@ -3,12 +3,12 @@ import type { Server as HttpsServer } from 'node:https';
 import { Server, type Socket } from 'socket.io';
 import { RT_NAMESPACE, type Ack, type ClientToServerEvents, type ServerToClientEvents } from '@opendialer/shared';
 import type { AuthUser } from './auth.js';
-import { userFromToken } from './auth.js';
+import { hasPermission, userFromToken } from './auth.js';
 import type { Ctx } from './context.js';
 import type { Engine } from './engine.js';
 import { HttpError } from './errors.js';
 
-type RtSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, { user: AuthUser; replaced?: boolean }>;
+type RtSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, { user: AuthUser; token: string; replaced?: boolean }>;
 
 export function createRealtime(ctx: Ctx, engine: Engine, servers: (HttpServer | HttpsServer)[]) {
   const io = new Server<ClientToServerEvents, ServerToClientEvents>({
@@ -31,6 +31,7 @@ export function createRealtime(ctx: Ctx, engine: Engine, servers: (HttpServer | 
     const user = userFromToken(ctx, token);
     if (!user) return next(new Error('unauthorized'));
     (socket as RtSocket).data.user = user;
+    (socket as RtSocket).data.token = token!;
     next();
   });
 
@@ -50,6 +51,9 @@ export function createRealtime(ctx: Ctx, engine: Engine, servers: (HttpServer | 
     (p: P, ack?: (r: Ack<R>) => void) => {
       const reply = typeof ack === 'function' ? ack : () => {};
       try {
+        const live = userFromToken(ctx, socket.data.token);
+        if (!live) throw new HttpError(401, 'unauthorized');
+        Object.assign(socket.data.user, live);
         reply({ ok: true, data: fn(p ?? ({} as P)) });
       } catch (err) {
         const msg = err instanceof HttpError ? err.message : (err as Error)?.message ?? 'error';
@@ -66,6 +70,7 @@ export function createRealtime(ctx: Ctx, engine: Engine, servers: (HttpServer | 
     /** Only the current console socket may drive the agent session. */
     const console_ = <P, R>(fn: (p: P) => R) =>
       handle(socket, (p: P) => {
+        if (!hasPermission(user, 'agent.use')) throw new HttpError(403, 'Insufficient permission');
         if (sockets.get(user.id) !== socket) throw new HttpError(409, 'This tab is no longer the active agent console – join again');
         return fn(p);
       });
@@ -73,6 +78,7 @@ export function createRealtime(ctx: Ctx, engine: Engine, servers: (HttpServer | 
     socket.on(
       'agent:join',
       handle(socket, (p: { campaignId: number | null }) => {
+        if (!hasPermission(user, 'agent.use')) throw new HttpError(403, 'Insufficient permission');
         const previous = sockets.get(user.id);
         if (previous && previous.id !== socket.id) {
           previous.emit('session:replaced');
@@ -106,7 +112,7 @@ export function createRealtime(ctx: Ctx, engine: Engine, servers: (HttpServer | 
     socket.on(
       'wallboard:subscribe',
       handle(socket, () => {
-        if (user.role === 'agent') throw new HttpError(403, 'Supervisors only');
+        if (!hasPermission(user, 'dashboard.view')) throw new HttpError(403, 'Insufficient permission');
         socket.join('wallboard');
         return engine.snapshot();
       }),

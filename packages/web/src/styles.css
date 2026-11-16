@@ -607,6 +607,128 @@ td.actions {
   gap: 0.5rem;
   margin-bottom: 0.75rem;
 }
+
+/* Roles editor: keep the dialog controls visible while its permission catalog scrolls. */
+.modal.role-editor-modal {
+  width: min(950px, 90vw);
+  max-width: 950px;
+  max-height: 90dvh;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.role-editor-modal > .modal-header {
+  flex: none;
+  margin: 0;
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.role-editor-form {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.role-editor-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: none;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.role-editor-permissions {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1.25rem 1.5rem 1.5rem;
+  scrollbar-gutter: stable;
+}
+.role-permission-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 1.25rem;
+}
+.role-permission-group {
+  padding: 1rem;
+  background: var(--surface);
+}
+.role-permission-group legend {
+  padding: 0 0.45rem;
+  color: var(--text);
+}
+.role-permission-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.role-permission-item {
+  align-items: flex-start;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.role-permission-item > input {
+  flex: none;
+  margin-top: 0.22rem;
+}
+.role-permission-copy {
+  display: block;
+  min-width: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.role-permission-description {
+  display: block;
+  margin-top: 0.2rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+.role-editor-modal > .form-actions {
+  flex: none;
+  margin: 0;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+@media (max-width: 760px) {
+  .role-editor-fields,
+  .role-permission-groups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .role-editor-modal > .modal-header,
+  .role-editor-fields,
+  .role-editor-permissions,
+  .role-editor-modal > .form-actions {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  .role-permission-groups {
+    gap: 1rem;
+  }
+}
+@media (max-width: 480px) {
+  .role-editor-modal > .modal-header {
+    padding-top: 0.9rem;
+    padding-bottom: 0.75rem;
+  }
+  .role-editor-fields,
+  .role-editor-permissions {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+  .role-permission-group {
+    padding: 0.8rem;
+  }
+  .role-editor-modal > .form-actions {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+}
 .overlay.drawer {
   justify-content: flex-end;
   align-items: stretch;

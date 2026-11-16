@@ -5,6 +5,7 @@ export * from './phone.js';
 export * from './areacodes.js';
 export * from './hours.js';
 export * from './script.js';
+export * from './permissions.js';
 
 export const AGENT_STATES = ['offline', 'ready', 'assigned', 'dialing', 'talking', 'wrapup', 'paused'] as const;
 

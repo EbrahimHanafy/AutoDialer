@@ -3,7 +3,8 @@ import { normalizePhone, formatPhone, phoneDigits } from './phone.js';
 import { timezoneForPhone } from './areacodes.js';
 import { isWithinCallingHours, localTimeIn, resolveLeadTimezone, isValidTimezone } from './hours.js';
 import { renderScript } from './script.js';
-import { campaignCreateSchema, campaignUpdateSchema, importMappingSchema, partialUpdate, settingsUpdateSchema, setupSchema, userUpdateSchema } from './schemas.js';
+import { campaignCreateSchema, campaignUpdateSchema, customRoleCreateSchema, importMappingSchema, partialUpdate, settingsUpdateSchema, setupSchema, userUpdateSchema } from './schemas.js';
+import { CAMPAIGN_TAB_PERMISSIONS, PERMISSIONS, SYSTEM_ROLE_PERMISSIONS, grantsPermission, type Permission } from './permissions.js';
 import { z } from 'zod';
 
 describe('normalizePhone', () => {
@@ -115,6 +116,38 @@ describe('schemas', () => {
   it('validates setup', () => {
     expect(() => setupSchema.parse({ username: 'ad min', password: 'password123', displayName: 'A' })).toThrow();
     expect(setupSchema.parse({ username: 'admin', password: 'password123', displayName: 'A' }).companyName).toBe('AutoDialer');
+  });
+  it('accepts only permissions supported by the application', () => {
+    expect(customRoleCreateSchema.parse({ name: 'Reporter', permissions: ['reports.view'] }).permissions).toEqual(['reports.view']);
+    expect(() => customRoleCreateSchema.parse({ name: 'Invented', permissions: ['made.up'] })).toThrow();
+  });
+  it('catalogs data exports separately and leaves new custom roles without export access', () => {
+    const exports = PERMISSIONS.filter((permission) => permission.group === 'Data Export');
+    expect(exports.map((permission) => permission.key)).toEqual(['calls.export', 'leads.export', 'backups.export']);
+    expect(customRoleCreateSchema.parse({ name: 'Empty role' }).permissions).toEqual([]);
+    expect(SYSTEM_ROLE_PERMISSIONS.agent).not.toContain('calls.export');
+    expect(SYSTEM_ROLE_PERMISSIONS.agent).not.toContain('leads.export');
+    expect(SYSTEM_ROLE_PERMISSIONS.agent).not.toContain('backups.export');
+    expect(SYSTEM_ROLE_PERMISSIONS.supervisor).toEqual(expect.arrayContaining(['calls.export', 'leads.export']));
+    expect(SYSTEM_ROLE_PERMISSIONS.supervisor).not.toContain('backups.export');
+    expect(SYSTEM_ROLE_PERMISSIONS.admin).toEqual(expect.arrayContaining(['calls.export', 'leads.export', 'backups.export']));
+  });
+  it('catalogs campaign tabs independently and preserves system role access', () => {
+    const tabs = PERMISSIONS.filter((permission) => permission.group === 'Campaign Tabs');
+    expect(tabs.map((permission) => permission.key)).toEqual(Object.values(CAMPAIGN_TAB_PERMISSIONS));
+    expect(customRoleCreateSchema.parse({ name: 'New custom role' }).permissions).toEqual([]);
+    expect(SYSTEM_ROLE_PERMISSIONS.agent).not.toEqual(expect.arrayContaining(Object.values(CAMPAIGN_TAB_PERMISSIONS)));
+    expect(SYSTEM_ROLE_PERMISSIONS.supervisor).toEqual(expect.arrayContaining(Object.values(CAMPAIGN_TAB_PERMISSIONS)));
+    expect(SYSTEM_ROLE_PERMISSIONS.admin).toEqual(expect.arrayContaining(Object.values(CAMPAIGN_TAB_PERMISSIONS)));
+  });
+  it('keeps every campaign permission explicit with no legacy umbrella or implication', () => {
+    const campaignPermissions = PERMISSIONS.map((permission) => permission.key).filter((key) => key.startsWith('campaigns.')) as Permission[];
+    expect(campaignPermissions).not.toContain('campaigns.manage' as Permission);
+    for (const granted of campaignPermissions) {
+      for (const requested of campaignPermissions) {
+        expect(grantsPermission([granted], requested), `${granted} must not imply ${requested}`).toBe(granted === requested);
+      }
+    }
   });
   it('update schemas never re-apply create defaults (omitted = unchanged)', () => {
     expect(campaignUpdateSchema.parse({ scriptId: 3 })).toEqual({ scriptId: 3 });

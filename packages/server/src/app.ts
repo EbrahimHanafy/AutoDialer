@@ -18,6 +18,7 @@ import { dispositionRoutes } from './routes/dispositions.js';
 import { dncRoutes } from './routes/dnc.js';
 import { leadRoutes } from './routes/leads.js';
 import { reportRoutes } from './routes/reports.js';
+import { roleRoutes } from './routes/roles.js';
 import { settingsRoutes } from './routes/settings.js';
 import { userRoutes } from './routes/users.js';
 import { closeDanglingCalls } from './services/calls.js';
@@ -66,6 +67,7 @@ export function createApp(config: Config, log: Logger, dbFile = path.join(config
   const api = express.Router();
   api.use(authRoutes(ctx));
   api.use(userRoutes(ctx));
+  api.use(roleRoutes(ctx));
   api.use(settingsRoutes(ctx));
   api.use(campaignRoutes(ctx, engine));
   api.use(leadRoutes(ctx));

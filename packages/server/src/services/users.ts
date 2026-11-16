@@ -1,8 +1,9 @@
-import type { Role, User, UserCreateInput, UserUpdateInput } from '@opendialer/shared';
+import { SYSTEM_ROLE_PERMISSIONS, type Permission, type Role, type User, type UserCreateInput, type UserUpdateInput } from '@opendialer/shared';
 import type { DB } from '../db.js';
 import { buildSet, fromBool } from '../db.js';
 import { hashPassword } from '../auth.js';
 import { conflict, notFound } from '../errors.js';
+import { parsePermissions, resolveRoleKey } from './roles.js';
 
 export interface UserRow {
   id: number;
@@ -10,6 +11,9 @@ export interface UserRow {
   display_name: string;
   password_hash: string;
   role: Role;
+  custom_role_id: number | null;
+  custom_role_name?: string | null;
+  custom_role_permissions?: string | null;
   active: number;
   sip_username: string | null;
   sip_auth_username: string | null;
@@ -18,11 +22,17 @@ export interface UserRow {
 }
 
 export function mapUser(r: UserRow, includeSipPassword = false): User {
+  const custom = r.custom_role_id != null;
+  const permissions: Permission[] = custom ? parsePermissions(r.custom_role_permissions) : [...SYSTEM_ROLE_PERMISSIONS[r.role]];
   return {
     id: r.id,
     username: r.username,
     displayName: r.display_name,
     role: r.role,
+    customRoleId: r.custom_role_id,
+    roleKey: custom ? `custom:${r.custom_role_id}` : `system:${r.role}`,
+    roleName: custom ? r.custom_role_name ?? 'Custom role' : r.role === 'admin' ? 'Admin' : r.role === 'supervisor' ? 'Supervisor' : 'Agent',
+    permissions,
     active: fromBool(r.active),
     sipUsername: r.sip_username,
     sipAuthUsername: r.sip_auth_username,
@@ -32,11 +42,14 @@ export function mapUser(r: UserRow, includeSipPassword = false): User {
 }
 
 export function listUsers(db: DB): User[] {
-  return (db.prepare('SELECT * FROM users ORDER BY role, username').all() as UserRow[]).map((r) => mapUser(r));
+  return (db.prepare(`SELECT u.*, cr.name AS custom_role_name, cr.permissions AS custom_role_permissions
+                        FROM users u LEFT JOIN custom_roles cr ON cr.id = u.custom_role_id
+                       ORDER BY u.role, u.username`).all() as UserRow[]).map((r) => mapUser(r));
 }
 
 export function getUserRow(db: DB, id: number): UserRow | undefined {
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
+  return db.prepare(`SELECT u.*, cr.name AS custom_role_name, cr.permissions AS custom_role_permissions
+                       FROM users u LEFT JOIN custom_roles cr ON cr.id = u.custom_role_id WHERE u.id = ?`).get(id) as UserRow | undefined;
 }
 
 export function getUser(db: DB, id: number, includeSipPassword = false): User {
@@ -46,7 +59,8 @@ export function getUser(db: DB, id: number, includeSipPassword = false): User {
 }
 
 export function findByUsername(db: DB, username: string): UserRow | undefined {
-  return db.prepare('SELECT * FROM users WHERE username = ?').get(username) as UserRow | undefined;
+  return db.prepare(`SELECT u.*, cr.name AS custom_role_name, cr.permissions AS custom_role_permissions
+                       FROM users u LEFT JOIN custom_roles cr ON cr.id = u.custom_role_id WHERE u.username = ?`).get(username) as UserRow | undefined;
 }
 
 export function countUsers(db: DB): number {
@@ -55,16 +69,18 @@ export function countUsers(db: DB): number {
 
 export function createUser(db: DB, input: UserCreateInput): User {
   if (findByUsername(db, input.username)) throw conflict('Username already exists');
+  const assignment = input.roleKey ? resolveRoleKey(db, input.roleKey) : { role: input.role, customRoleId: null };
   const r = db
     .prepare(
-      `INSERT INTO users (username, display_name, password_hash, role, active, sip_username, sip_auth_username, sip_password)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (username, display_name, password_hash, role, custom_role_id, active, sip_username, sip_auth_username, sip_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.username,
       input.displayName,
       hashPassword(input.password),
-      input.role,
+      assignment.role,
+      assignment.customRoleId,
       input.active ? 1 : 0,
       input.sipUsername ?? null,
       input.sipAuthUsername ?? null,
@@ -80,6 +96,14 @@ export function updateUser(db: DB, id: number, patch: UserUpdateInput): User {
     throw conflict('Username already exists');
   }
   const fields: Record<string, unknown> = { ...patch };
+  if (patch.roleKey) {
+    const assignment = resolveRoleKey(db, patch.roleKey);
+    fields.role = assignment.role;
+    fields.customRoleId = assignment.customRoleId;
+  } else if (patch.role) {
+    fields.customRoleId = null;
+  }
+  delete fields.roleKey;
   if (patch.password) fields.passwordHash = hashPassword(patch.password);
   delete fields.password;
   if (typeof patch.active === 'boolean') fields.active = patch.active ? 1 : 0;
@@ -88,6 +112,7 @@ export function updateUser(db: DB, id: number, patch: UserUpdateInput): User {
     'displayName',
     'passwordHash',
     'role',
+    'customRoleId',
     'active',
     'sipUsername',
     'sipAuthUsername',

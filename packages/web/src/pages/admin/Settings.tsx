@@ -3,12 +3,12 @@ import { settingsSchema, type Settings } from '@opendialer/shared';
 import { ErrorBox, Field, Loading, useLoad } from '../../components/ui';
 import { api, describeError } from '../../lib/api';
 import { COUNTRIES, timeZones, zodIssues } from '../../lib/format';
-import { hasRole, useAuth } from '../../store/auth';
+import { hasPermission, useAuth } from '../../store/auth';
 import { toast } from '../../store/toasts';
 
 export default function SettingsPage() {
   const user = useAuth((s) => s.user);
-  const admin = hasRole(user, 'admin');
+  const admin = hasPermission(user, 'settings.manage');
   const { data, error, reload } = useLoad(() => api.get<Settings>('/settings'), []);
   const [v, setV] = useState<Settings | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});

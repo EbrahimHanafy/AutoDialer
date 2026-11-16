@@ -1,25 +1,25 @@
 import { useEffect, useState } from 'react';
-import { userCreateSchema, userUpdateSchema, type Role, type User } from '@opendialer/shared';
+import { userCreateSchema, userUpdateSchema, type RoleDefinition, type User } from '@opendialer/shared';
 import { Empty, ErrorBox, Field, Modal, confirmDialog, useLoad } from '../../components/ui';
 import { api, describeError } from '../../lib/api';
 import { fmtDateTime, zodIssues } from '../../lib/format';
-import { hasRole, useAuth } from '../../store/auth';
+import { hasPermission, useAuth } from '../../store/auth';
 import { toast } from '../../store/toasts';
 
 interface Form {
   username: string;
   password: string;
   displayName: string;
-  role: Role;
+  roleKey: string;
   active: boolean;
   sipUsername: string;
   sipAuthUsername: string;
   sipPassword: string;
 }
 
-const empty: Form = { username: '', password: '', displayName: '', role: 'agent', active: true, sipUsername: '', sipAuthUsername: '', sipPassword: '' };
+const empty: Form = { username: '', password: '', displayName: '', roleKey: 'system:agent', active: true, sipUsername: '', sipAuthUsername: '', sipPassword: '' };
 
-function UserEditor({ id, onClose, onSaved }: { id: number | null; onClose: () => void; onSaved: () => void }) {
+function UserEditor({ id, roles, onClose, onSaved }: { id: number | null; roles: RoleDefinition[]; onClose: () => void; onSaved: () => void }) {
   const [v, setV] = useState<Form>(empty);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -34,7 +34,7 @@ function UserEditor({ id, onClose, onSaved }: { id: number | null; onClose: () =
           username: u.username,
           password: '',
           displayName: u.displayName,
-          role: u.role,
+          roleKey: u.roleKey,
           active: u.active,
           sipUsername: u.sipUsername ?? '',
           sipAuthUsername: u.sipAuthUsername ?? '',
@@ -51,7 +51,7 @@ function UserEditor({ id, onClose, onSaved }: { id: number | null; onClose: () =
     const body = {
       username: v.username.trim(),
       displayName: v.displayName.trim(),
-      role: v.role,
+      roleKey: v.roleKey,
       active: v.active,
       sipUsername: nul(v.sipUsername),
       sipAuthUsername: nul(v.sipAuthUsername),
@@ -96,10 +96,15 @@ function UserEditor({ id, onClose, onSaved }: { id: number | null; onClose: () =
             <input name="password" type="password" autoComplete="new-password" value={v.password} onChange={(e) => set('password', e.target.value)} />
           </Field>
           <Field label="Role">
-            <select name="role" value={v.role} onChange={(e) => set('role', e.target.value as Role)}>
-              <option value="agent">Agent</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="admin">Admin</option>
+            <select name="role" value={v.roleKey} onChange={(e) => set('roleKey', e.target.value)}>
+              <optgroup label="System roles">
+                {roles.filter((role) => role.system).map((role) => <option key={role.key} value={role.key}>{role.name}</option>)}
+              </optgroup>
+              {roles.some((role) => !role.system) && (
+                <optgroup label="Custom roles">
+                  {roles.filter((role) => !role.system).map((role) => <option key={role.key} value={role.key}>{role.name}</option>)}
+                </optgroup>
+              )}
             </select>
           </Field>
         </div>
@@ -133,20 +138,22 @@ function UserEditor({ id, onClose, onSaved }: { id: number | null; onClose: () =
 
 export default function Users() {
   const me = useAuth((s) => s.user);
-  const admin = hasRole(me, 'admin');
+  const canManage = hasPermission(me, 'users.manage');
   const { data, error, reload } = useLoad(() => api.get<User[]>('/users'), []);
+  const { data: roles, error: rolesError } = useLoad(() => canManage ? api.get<RoleDefinition[]>('/roles') : Promise.resolve([]), [canManage]);
   const [editing, setEditing] = useState<number | 'new' | null>(null);
   return (
     <div className="stack">
       <div className="page-head">
         <h1>Users</h1>
-        {admin && (
+        {canManage && (
           <button type="button" className="btn primary" onClick={() => setEditing('new')}>
             + New user
           </button>
         )}
       </div>
       <ErrorBox error={error} onRetry={reload} />
+      <ErrorBox error={rolesError} />
       <div className="table-wrap">
         <table>
           <thead>
@@ -165,12 +172,12 @@ export default function Users() {
               <tr key={u.id}>
                 <td>{u.displayName}</td>
                 <td className="mono">{u.username}</td>
-                <td>{u.role}</td>
+                <td>{u.roleName}{u.customRoleId != null && <span className="badge" style={{ marginLeft: '0.5rem' }}>Custom</span>}</td>
                 <td className="mono">{u.sipUsername ?? <span className="muted">—</span>}</td>
                 <td>{u.active ? <span className="badge green">active</span> : <span className="badge red">inactive</span>}</td>
                 <td className="nowrap">{fmtDateTime(u.createdAt)}</td>
                 <td className="actions">
-                  {admin && (
+                  {canManage && (
                     <>
                       <button type="button" className="btn small" onClick={() => setEditing(u.id)}>
                         Edit
@@ -204,6 +211,7 @@ export default function Users() {
       {editing != null && (
         <UserEditor
           id={editing === 'new' ? null : editing}
+          roles={roles ?? []}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);

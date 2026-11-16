@@ -129,6 +129,7 @@ export function Modal({
   wide,
   drawer,
   footer,
+  className,
 }: {
   title: ReactNode;
   onClose: () => void;
@@ -136,6 +137,7 @@ export function Modal({
   wide?: boolean;
   drawer?: boolean;
   footer?: ReactNode;
+  className?: string;
 }) {
   const id = useId();
   useEffect(() => {
@@ -145,7 +147,7 @@ export function Modal({
   }, [onClose]);
   return (
     <div className={`overlay ${drawer ? 'drawer' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={id}>
+      <div className={`modal ${wide ? 'wide' : ''} ${className ?? ''}`.trim()} role="dialog" aria-modal="true" aria-labelledby={id}>
         <div className="modal-header">
           <h2 id={id} style={{ margin: 0 }}>
             {title}

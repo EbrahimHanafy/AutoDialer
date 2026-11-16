@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PublicSettings, Role, Settings, User } from '@opendialer/shared';
+import { CAMPAIGN_TAB_PERMISSIONS, grantsPermission, SYSTEM_ROLE_PERMISSIONS, type Permission, type PublicSettings, type Settings, type User } from '@opendialer/shared';
 import { api, request } from '../lib/api';
 import { getToken, setToken } from '../lib/config';
 
@@ -83,5 +83,29 @@ export const useAuth = create<AuthStore>((set, get) => ({
   },
 }));
 
-const RANK: Record<Role, number> = { agent: 1, supervisor: 2, admin: 3 };
-export const hasRole = (user: Pick<User, 'role'> | null | undefined, min: Role) => Boolean(user && RANK[user.role] >= RANK[min]);
+export const hasPermission = (user: Pick<User, 'role' | 'permissions'> | null | undefined, permission: Permission) =>
+  Boolean(user && grantsPermission(user.permissions ?? SYSTEM_ROLE_PERMISSIONS[user.role], permission));
+export const isSystemAdmin = (user: Pick<User, 'role' | 'customRoleId'> | null | undefined) => Boolean(user && user.role === 'admin' && user.customRoleId == null);
+
+const ADMIN_LANDING: { permission: Permission; path: string }[] = [
+  { permission: 'dashboard.view', path: '/admin/dashboard' },
+  { permission: 'campaigns.view', path: '/admin/campaigns' },
+  { permission: 'campaigns.create', path: '/admin/campaigns' },
+  ...Object.values(CAMPAIGN_TAB_PERMISSIONS).map((permission) => ({ permission, path: '/admin/campaigns' })),
+  { permission: 'leads.manage', path: '/admin/leads' },
+  { permission: 'callbacks.manage', path: '/admin/callbacks' },
+  { permission: 'calls.manage', path: '/admin/calls' },
+  { permission: 'reports.view', path: '/admin/reports' },
+  { permission: 'scripts.manage', path: '/admin/scripts' },
+  { permission: 'dispositions.view', path: '/admin/dispositions' },
+  { permission: 'dispositions.manage', path: '/admin/dispositions' },
+  { permission: 'dnc.manage', path: '/admin/dnc' },
+  { permission: 'users.view', path: '/admin/users' },
+  { permission: 'users.manage', path: '/admin/users' },
+  { permission: 'settings.view', path: '/admin/settings' },
+  { permission: 'settings.manage', path: '/admin/settings' },
+  { permission: 'integrations.manage', path: '/admin/integrations' },
+  { permission: 'audit.view', path: '/admin/audit' },
+  { permission: 'system.manage', path: '/admin/system' },
+];
+export const adminPathFor = (user: User | null | undefined) => ADMIN_LANDING.find((x) => hasPermission(user, x.permission))?.path ?? null;

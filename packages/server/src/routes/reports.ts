@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireRole } from '../auth.js';
+import { requirePermission } from '../auth.js';
 import type { Ctx } from '../context.js';
 import type { Engine } from '../engine.js';
 import { wrap } from '../errors.js';
@@ -19,12 +19,12 @@ export function reportRoutes(ctx: Ctx, engine: Engine) {
   const r = Router();
   const { db } = ctx;
 
-  r.get('/reports/summary', requireRole('supervisor'), (_req, res) => res.json(todaySummary(db)));
-  r.get('/reports/campaigns', requireRole('supervisor'), wrap((req, res) => res.json(campaignReport(db, range(req.query as Record<string, string>)))));
-  r.get('/reports/agents', requireRole('supervisor'), wrap((req, res) => res.json(agentReport(db, range(req.query as Record<string, string>)))));
+  r.get('/reports/summary', requirePermission('reports.view'), (_req, res) => res.json(todaySummary(db)));
+  r.get('/reports/campaigns', requirePermission('reports.view'), wrap((req, res) => res.json(campaignReport(db, range(req.query as Record<string, string>)))));
+  r.get('/reports/agents', requirePermission('reports.view'), wrap((req, res) => res.json(agentReport(db, range(req.query as Record<string, string>)))));
   r.get(
     '/reports/dispositions',
-    requireRole('supervisor'),
+    requirePermission('reports.view'),
     wrap((req, res) => {
       const q = req.query as Record<string, string | undefined>;
       res.json(dispositionReport(db, range(q), q.campaignId ? Number(q.campaignId) : undefined));
@@ -32,7 +32,7 @@ export function reportRoutes(ctx: Ctx, engine: Engine) {
   );
   r.get(
     '/reports/hourly',
-    requireRole('supervisor'),
+    requirePermission('reports.view'),
     wrap((req, res) => {
       const q = req.query as Record<string, string | undefined>;
       res.json(hourlyReport(db, range(q), q.campaignId ? Number(q.campaignId) : undefined));
@@ -41,7 +41,7 @@ export function reportRoutes(ctx: Ctx, engine: Engine) {
 
   r.get(
     '/reports/export/calls.csv',
-    requireRole('supervisor'),
+    requirePermission('calls.export'),
     wrap((req, res) => {
       const q = req.query as Record<string, string | undefined>;
       const rows = iterateCalls(db, {
@@ -74,7 +74,7 @@ export function reportRoutes(ctx: Ctx, engine: Engine) {
 
   r.get(
     '/reports/export/leads.csv',
-    requireRole('supervisor'),
+    requirePermission('leads.export'),
     wrap((req, res) => {
       const q = req.query as Record<string, string | undefined>;
       const where: string[] = [];
@@ -102,7 +102,7 @@ export function reportRoutes(ctx: Ctx, engine: Engine) {
     }),
   );
 
-  r.get('/wallboard', requireRole('supervisor'), (_req, res) => res.json(engine.snapshot()));
+  r.get('/wallboard', requirePermission('dashboard.view'), (_req, res) => res.json(engine.snapshot()));
 
   return r;
 }

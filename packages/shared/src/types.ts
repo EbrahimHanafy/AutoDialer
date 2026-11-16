@@ -3,7 +3,22 @@
  * Keep this file free of runtime dependencies – it is types only.
  */
 
+import type { Permission } from './permissions.js';
+
 export type Role = 'admin' | 'supervisor' | 'agent';
+
+export interface RoleDefinition {
+  key: string;
+  id: number | null;
+  name: string;
+  description: string;
+  system: boolean;
+  systemRole: Role | null;
+  permissions: Permission[];
+  userCount: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
 
 export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed';
 
@@ -59,6 +74,10 @@ export interface User {
   username: string;
   displayName: string;
   role: Role;
+  customRoleId: number | null;
+  roleKey: string;
+  roleName: string;
+  permissions: Permission[];
   active: boolean;
   /** SIP credentials used by the agent's softphone (never returned to other agents). */
   sipUsername: string | null;

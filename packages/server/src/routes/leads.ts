@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { importMappingSchema, leadCreateSchema, leadUpdateSchema, paginationSchema } from '@opendialer/shared';
-import { requireRole } from '../auth.js';
+import { CAMPAIGN_TAB_PERMISSIONS, importMappingSchema, leadCreateSchema, leadUpdateSchema, paginationSchema } from '@opendialer/shared';
+import { hasPermission, requireAnyPermission, requirePermission } from '../auth.js';
 import type { Ctx } from '../context.js';
-import { badRequest, idParam, parse, wrap } from '../errors.js';
+import { badRequest, forbidden, idParam, parse, wrap } from '../errors.js';
 import { audit } from '../services/audit.js';
 import { listCalls } from '../services/calls.js';
+import { isAgentOnCampaign } from '../services/campaigns.js';
 import { getList } from '../services/lists.js';
 import { createLead, deleteLead, getLead, guessMapping, importLeads, listLeads, parseCsvText, updateLead } from '../services/leads.js';
 import { getSettings } from '../services/settings.js';
@@ -15,13 +16,22 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 export function leadRoutes(ctx: Ctx) {
   const r = Router();
   const { db } = ctx;
+  const assertTabLeadAccess = (campaignId: number, userId: number) => {
+    if (!isAgentOnCampaign(db, campaignId, userId, 'agent')) throw forbidden('Campaign is not assigned to this user');
+  };
 
   r.get(
     '/leads',
-    requireRole('agent'),
+    requireAnyPermission('leads.work', 'leads.manage', 'campaigns.leads.view'),
     wrap((req, res) => {
       const { page, pageSize } = parse(paginationSchema, req.query);
       const q = req.query as Record<string, string | undefined>;
+      if (!hasPermission(req.user, 'leads.work') && !hasPermission(req.user, 'leads.manage')) {
+        if (!hasPermission(req.user, CAMPAIGN_TAB_PERMISSIONS.leads)) throw forbidden('Insufficient permission');
+        const campaignId = q.campaignId ? Number(q.campaignId) : q.listId ? getList(db, Number(q.listId)).campaignId : 0;
+        if (!campaignId) throw forbidden('A campaign filter is required for campaign-tab access');
+        assertTabLeadAccess(campaignId, req.user!.id);
+      }
       res.json(
         listLeads(
           db,
@@ -40,10 +50,14 @@ export function leadRoutes(ctx: Ctx) {
 
   r.get(
     '/leads/:id',
-    requireRole('agent'),
+    requireAnyPermission('leads.work', 'leads.manage', 'campaigns.leads.view'),
     wrap((req, res) => {
       const id = idParam(req);
       const lead = getLead(db, id);
+      if (!hasPermission(req.user, 'leads.work') && !hasPermission(req.user, 'leads.manage')) {
+        if (!hasPermission(req.user, CAMPAIGN_TAB_PERMISSIONS.leads)) throw forbidden('Insufficient permission');
+        assertTabLeadAccess(lead.campaignId, req.user!.id);
+      }
       const calls = listCalls(db, { leadId: id }, 1, 100).items;
       const callbacks = db.prepare('SELECT * FROM callbacks WHERE lead_id = ? ORDER BY scheduled_at DESC').all(id);
       res.json({ ...lead, calls, callbacks });
@@ -52,7 +66,7 @@ export function leadRoutes(ctx: Ctx) {
 
   r.post(
     '/leads',
-    requireRole('agent'),
+    requireAnyPermission('leads.work', 'leads.manage'),
     wrap((req, res) => {
       const input = parse(leadCreateSchema, req.body);
       const list = getList(db, input.listId);
@@ -65,12 +79,12 @@ export function leadRoutes(ctx: Ctx) {
 
   r.patch(
     '/leads/:id',
-    requireRole('agent'),
+    requireAnyPermission('leads.work', 'leads.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       const patch = parse(leadUpdateSchema, req.body);
       // agents may only edit contact details / notes, not queue state
-      if (req.user!.role === 'agent' && (patch.status || patch.attempts !== undefined || patch.nextAttemptAt !== undefined)) {
+      if (!hasPermission(req.user, 'leads.manage') && (patch.status || patch.attempts !== undefined || patch.nextAttemptAt !== undefined)) {
         throw badRequest('Agents cannot change lead queue state');
       }
       const lead = updateLead(db, id, patch, getSettings(db).defaultCountry);
@@ -82,7 +96,7 @@ export function leadRoutes(ctx: Ctx) {
 
   r.delete(
     '/leads/:id',
-    requireRole('supervisor'),
+    requirePermission('leads.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       deleteLead(db, id);
@@ -94,7 +108,7 @@ export function leadRoutes(ctx: Ctx) {
   /** Step 1 of the import wizard: upload the CSV, get headers + a guessed mapping + a preview. */
   r.post(
     '/lists/:id/import/preview',
-    requireRole('supervisor'),
+    requirePermission('campaigns.lists.import'),
     upload.single('file'),
     wrap((req, res) => {
       getList(db, idParam(req));
@@ -108,7 +122,7 @@ export function leadRoutes(ctx: Ctx) {
   /** Step 2: import with a confirmed mapping (multipart "file" + "mapping" JSON, or JSON body {csv, mapping}). */
   r.post(
     '/lists/:id/import',
-    requireRole('supervisor'),
+    requirePermission('campaigns.lists.import'),
     upload.single('file'),
     wrap((req, res) => {
       const listId = idParam(req);

@@ -2,16 +2,19 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { NextFunction, Request, Response } from 'express';
-import type { Role, User } from '@opendialer/shared';
+import { grantsPermission, SYSTEM_ROLE_PERMISSIONS, type Permission, type Role, type User } from '@opendialer/shared';
 import type { Ctx } from './context.js';
 import { forbidden, unauthorized } from './errors.js';
-import { mapUser, type UserRow } from './services/users.js';
+import { getUserRow, mapUser } from './services/users.js';
 
 export interface AuthUser {
   id: number;
   username: string;
   displayName: string;
   role: Role;
+  customRoleId: number | null;
+  roleName: string;
+  permissions: Permission[];
   /** true when authenticated with an API key instead of a login token */
   apiKey?: boolean;
 }
@@ -36,10 +39,18 @@ export function userFromToken(ctx: Ctx, token: string | undefined | null): AuthU
   if (!token) return null;
   try {
     const payload = jwt.verify(token, ctx.config.jwtSecret) as { sub: string };
-    const row = ctx.db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(Number(payload.sub)) as UserRow | undefined;
-    if (!row) return null;
+    const row = getUserRow(ctx.db, Number(payload.sub));
+    if (!row || !row.active) return null;
     const u = mapUser(row);
-    return { id: u.id, username: u.username, displayName: u.displayName, role: u.role };
+    return {
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName,
+      role: u.role,
+      customRoleId: u.customRoleId,
+      roleName: u.roleName,
+      permissions: u.permissions,
+    };
   } catch {
     return null;
   }
@@ -55,7 +66,16 @@ export function userFromApiKey(ctx: Ctx, key: string | undefined): AuthUser | nu
   if (!row) return null;
   ctx.db.prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?').run(new Date().toISOString(), row.id);
   // API keys act as an admin "service user" – they have no agent identity.
-  return { id: 0, username: `apikey:${row.name}`, displayName: row.name, role: 'admin', apiKey: true };
+  return {
+    id: 0,
+    username: `apikey:${row.name}`,
+    displayName: row.name,
+    role: 'admin',
+    customRoleId: null,
+    roleName: 'Admin',
+    permissions: [...SYSTEM_ROLE_PERMISSIONS.admin],
+    apiKey: true,
+  };
 }
 
 /** Attach req.user when a valid Bearer token or X-API-Key is present. Never rejects. */
@@ -69,13 +89,37 @@ export function authenticate(ctx: Ctx) {
   };
 }
 
-const RANK: Record<Role, number> = { agent: 1, supervisor: 2, admin: 3 };
+export const hasPermission = (user: Pick<AuthUser, 'permissions'> | null | undefined, permission: Permission) => Boolean(user && grantsPermission(user.permissions, permission));
 
-/** Require a logged-in user with at least `role`. */
-export function requireRole(role: Role = 'agent') {
+export function requireAuthenticated() {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) return next(unauthorized());
-    if (RANK[req.user.role] < RANK[role]) return next(forbidden('Insufficient role'));
+    next();
+  };
+}
+
+export function requirePermission(permission: Permission) {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.user) return next(unauthorized());
+    if (!hasPermission(req.user, permission)) return next(forbidden('Insufficient permission'));
+    next();
+  };
+}
+
+export function requireAnyPermission(...permissions: Permission[]) {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.user) return next(unauthorized());
+    if (!permissions.some((p) => hasPermission(req.user, p))) return next(forbidden('Insufficient permission'));
+    next();
+  };
+}
+
+export const isSystemAdmin = (user: Pick<AuthUser, 'role' | 'customRoleId'> | null | undefined) => Boolean(user && user.role === 'admin' && user.customRoleId == null);
+
+export function requireSystemAdmin() {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.user) return next(unauthorized());
+    if (!isSystemAdmin(req.user)) return next(forbidden('System administrator required'));
     next();
   };
 }

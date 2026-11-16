@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { dispositionCreateSchema, dispositionUpdateSchema, scriptCreateSchema, scriptUpdateSchema, renderScript } from '@opendialer/shared';
-import { requireRole } from '../auth.js';
+import { requireAnyPermission, requirePermission } from '../auth.js';
 import type { Ctx } from '../context.js';
 import { idParam, parse, wrap } from '../errors.js';
 import { audit } from '../services/audit.js';
@@ -13,10 +13,10 @@ export function dispositionRoutes(ctx: Ctx) {
   const r = Router();
   const { db } = ctx;
 
-  r.get('/dispositions', requireRole('agent'), (_req, res) => res.json(listDispositions(db)));
+  r.get('/dispositions', requireAnyPermission('dispositions.use', 'dispositions.view', 'dispositions.manage'), (_req, res) => res.json(listDispositions(db)));
   r.post(
     '/dispositions',
-    requireRole('admin'),
+    requirePermission('dispositions.manage'),
     wrap((req, res) => {
       const d = createDisposition(db, parse(dispositionCreateSchema, req.body));
       audit(db, req.user!.id, 'disposition.create', 'disposition', d.id, { code: d.code });
@@ -25,7 +25,7 @@ export function dispositionRoutes(ctx: Ctx) {
   );
   r.patch(
     '/dispositions/:id',
-    requireRole('admin'),
+    requirePermission('dispositions.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       const d = updateDisposition(db, id, parse(dispositionUpdateSchema, req.body));
@@ -35,7 +35,7 @@ export function dispositionRoutes(ctx: Ctx) {
   );
   r.delete(
     '/dispositions/:id',
-    requireRole('admin'),
+    requirePermission('dispositions.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       deleteDisposition(db, id);
@@ -46,11 +46,11 @@ export function dispositionRoutes(ctx: Ctx) {
 
   /* ---------- scripts ---------- */
 
-  r.get('/scripts', requireRole('agent'), (_req, res) => res.json(listScripts(db)));
-  r.get('/scripts/:id', requireRole('agent'), wrap((req, res) => res.json(getScript(db, idParam(req)))));
+  r.get('/scripts', requireAnyPermission('scripts.use', 'scripts.manage'), (_req, res) => res.json(listScripts(db)));
+  r.get('/scripts/:id', requireAnyPermission('scripts.use', 'scripts.manage'), wrap((req, res) => res.json(getScript(db, idParam(req)))));
   r.get(
     '/scripts/:id/preview',
-    requireRole('agent'),
+    requireAnyPermission('scripts.use', 'scripts.manage'),
     wrap((req, res) => {
       const s = getScript(db, idParam(req));
       const lead = req.query.leadId ? findLead(db, Number(req.query.leadId)) : { firstName: 'Jane', lastName: 'Doe', company: 'Acme Inc', phone: '+15551234567', custom: {} };
@@ -59,7 +59,7 @@ export function dispositionRoutes(ctx: Ctx) {
   );
   r.post(
     '/scripts',
-    requireRole('supervisor'),
+    requirePermission('scripts.manage'),
     wrap((req, res) => {
       const s = createScript(db, parse(scriptCreateSchema, req.body));
       audit(db, req.user!.id, 'script.create', 'script', s.id);
@@ -68,7 +68,7 @@ export function dispositionRoutes(ctx: Ctx) {
   );
   r.patch(
     '/scripts/:id',
-    requireRole('supervisor'),
+    requirePermission('scripts.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       const s = updateScript(db, id, parse(scriptUpdateSchema, req.body));
@@ -78,7 +78,7 @@ export function dispositionRoutes(ctx: Ctx) {
   );
   r.delete(
     '/scripts/:id',
-    requireRole('supervisor'),
+    requirePermission('scripts.manage'),
     wrap((req, res) => {
       const id = idParam(req);
       deleteScript(db, id);
