@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { CAMPAIGN_TAB_PERMISSIONS, importMappingSchema, leadCreateSchema, leadUpdateSchema, paginationSchema } from '@opendialer/shared';
+import { CAMPAIGN_TAB_PERMISSIONS, importMappingSchema, leadCreateSchema, leadUpdateSchema, maskPhone, paginationSchema } from '@opendialer/shared';
 import { hasPermission, requireAnyPermission, requirePermission } from '../auth.js';
 import type { Ctx } from '../context.js';
 import { badRequest, forbidden, idParam, parse, wrap } from '../errors.js';
@@ -10,6 +10,7 @@ import { isAgentOnCampaign } from '../services/campaigns.js';
 import { getList } from '../services/lists.js';
 import { createLead, deleteLead, getLead, guessMapping, importLeads, listLeads, parseCsvText, updateLead } from '../services/leads.js';
 import { getSettings } from '../services/settings.js';
+import { tableCall, tableLeadPage } from '../services/phonePrivacy.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -33,7 +34,7 @@ export function leadRoutes(ctx: Ctx) {
         assertTabLeadAccess(campaignId, req.user!.id);
       }
       res.json(
-        listLeads(
+        tableLeadPage(listLeads(
           db,
           {
             campaignId: q.campaignId ? Number(q.campaignId) : undefined,
@@ -43,7 +44,7 @@ export function leadRoutes(ctx: Ctx) {
           },
           page,
           pageSize,
-        ),
+        ), hasPermission(req.user, 'leads.viewFullPhoneNumbers')),
       );
     }),
   );
@@ -58,7 +59,8 @@ export function leadRoutes(ctx: Ctx) {
         if (!hasPermission(req.user, CAMPAIGN_TAB_PERMISSIONS.leads)) throw forbidden('Insufficient permission');
         assertTabLeadAccess(lead.campaignId, req.user!.id);
       }
-      const calls = listCalls(db, { leadId: id }, 1, 100).items;
+      const showFull = hasPermission(req.user, 'leads.viewFullPhoneNumbers');
+      const calls = listCalls(db, { leadId: id }, 1, 100).items.map((call) => tableCall(call, showFull));
       const callbacks = db.prepare('SELECT * FROM callbacks WHERE lead_id = ? ORDER BY scheduled_at DESC').all(id);
       res.json({ ...lead, calls, callbacks });
     }),
@@ -115,7 +117,12 @@ export function leadRoutes(ctx: Ctx) {
       const text = req.file ? req.file.buffer.toString('utf8') : typeof req.body?.csv === 'string' ? req.body.csv : '';
       if (!text.trim()) throw badRequest('No CSV data');
       const { headers, rows } = parseCsvText(text);
-      res.json({ headers, mapping: guessMapping(headers), rows: rows.slice(0, 10), total: rows.length });
+      const mapping = guessMapping(headers);
+      const previewRows = rows.slice(0, 10);
+      const protectedRows = hasPermission(req.user, 'leads.viewFullPhoneNumbers') || !mapping.phone
+        ? previewRows
+        : previewRows.map((row) => ({ ...row, [mapping.phone!]: maskPhone(row[mapping.phone!] ?? '') }));
+      res.json({ headers, mapping, rows: protectedRows, total: rows.length });
     }),
   );
 

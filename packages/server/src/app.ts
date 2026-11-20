@@ -17,16 +17,19 @@ import { campaignRoutes } from './routes/campaigns.js';
 import { dispositionRoutes } from './routes/dispositions.js';
 import { dncRoutes } from './routes/dnc.js';
 import { leadRoutes } from './routes/leads.js';
+import { gsmDongleRoutes } from './routes/gsmDongles.js';
 import { reportRoutes } from './routes/reports.js';
 import { roleRoutes } from './routes/roles.js';
 import { settingsRoutes } from './routes/settings.js';
 import { userRoutes } from './routes/users.js';
 import { closeDanglingCalls } from './services/calls.js';
 import { startWebhookDispatcher } from './services/webhooks.js';
+import { GsmDongleMonitor } from './services/gsmDongles.js';
 
 export interface App {
   ctx: Ctx;
   engine: Engine;
+  gsmDongles: GsmDongleMonitor;
   express: express.Express;
   close: () => void;
 }
@@ -40,6 +43,7 @@ export function createApp(config: Config, log: Logger, dbFile = path.join(config
   const bus = new Bus();
   const ctx: Ctx = { db, config, log, bus };
   const engine = new Engine(ctx);
+  const gsmDongles = new GsmDongleMonitor(config.gsmDongleMonitor, log);
   const stopWebhooks = startWebhookDispatcher(ctx);
   closeDanglingCalls(db);
 
@@ -75,6 +79,7 @@ export function createApp(config: Config, log: Logger, dbFile = path.join(config
   api.use(dispositionRoutes(ctx));
   api.use(callRoutes(ctx));
   api.use(reportRoutes(ctx, engine));
+  api.use(gsmDongleRoutes(gsmDongles));
   api.use(adminRoutes(ctx, engine));
   api.use((_req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', api);
@@ -106,12 +111,16 @@ export function createApp(config: Config, log: Logger, dbFile = path.join(config
 
   app.use(errorHandler(log));
 
+  gsmDongles.start();
+
   return {
     ctx,
     engine,
+    gsmDongles,
     express: app,
     close: () => {
       engine.stop();
+      gsmDongles.stop();
       stopWebhooks();
       db.close();
     },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePhone, formatPhone, phoneDigits } from './phone.js';
+import { normalizePhone, formatPhone, maskPhone, phoneDigits } from './phone.js';
 import { timezoneForPhone } from './areacodes.js';
 import { isWithinCallingHours, localTimeIn, resolveLeadTimezone, isValidTimezone } from './hours.js';
 import { renderScript } from './script.js';
@@ -30,6 +30,9 @@ describe('normalizePhone', () => {
     expect(formatPhone('+14155552671')).toBe('(415) 555-2671');
     expect(formatPhone('+442079460958')).toBe('+44 20 7946 0958');
     expect(formatPhone(null)).toBe('');
+    expect(maskPhone('01012345678')).toBe('*******5678');
+    expect(maskPhone('+1 (415) 555-2671')).toBe('*******2671');
+    expect(maskPhone(null)).toBe('');
     expect(phoneDigits('+1 (415) 555-2671')).toBe('14155552671');
   });
 });
@@ -120,6 +123,13 @@ describe('schemas', () => {
   it('accepts only permissions supported by the application', () => {
     expect(customRoleCreateSchema.parse({ name: 'Reporter', permissions: ['reports.view'] }).permissions).toEqual(['reports.view']);
     expect(() => customRoleCreateSchema.parse({ name: 'Invented', permissions: ['made.up'] })).toThrow();
+  });
+
+  it('keeps full phone access disabled for new custom roles and enabled only for system admins by default', () => {
+    expect(customRoleCreateSchema.parse({ name: 'New role' }).permissions).not.toContain('leads.viewFullPhoneNumbers');
+    expect(SYSTEM_ROLE_PERMISSIONS.admin).toContain('leads.viewFullPhoneNumbers');
+    expect(SYSTEM_ROLE_PERMISSIONS.supervisor).not.toContain('leads.viewFullPhoneNumbers');
+    expect(SYSTEM_ROLE_PERMISSIONS.agent).not.toContain('leads.viewFullPhoneNumbers');
   });
   it('catalogs data exports separately and leaves new custom roles without export access', () => {
     const exports = PERMISSIONS.filter((permission) => permission.group === 'Data Export');

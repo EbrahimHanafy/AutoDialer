@@ -288,6 +288,18 @@ WHERE json_valid(permissions)
   );
 `,
   },
+  {
+    id: 5,
+    sql: `
+CREATE TABLE system_role_permission_overrides (
+  role TEXT NOT NULL CHECK (role IN ('admin','supervisor','agent')),
+  permission TEXT NOT NULL,
+  allowed INTEGER NOT NULL CHECK (allowed IN (0,1)),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (role, permission)
+);
+`,
+  },
 ];
 
 export function openDatabase(file: string): DB {

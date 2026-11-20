@@ -43,3 +43,12 @@ export function formatPhone(e164: string | null | undefined): string {
 export function phoneDigits(phone: string): string {
   return String(phone ?? '').replace(/\D/g, '');
 }
+
+/** Mask a phone for table/export display while retaining only its last four digits. */
+export function maskPhone(phone: string | null | undefined): string {
+  if (!phone) return '';
+  const digits = phoneDigits(phone);
+  if (!digits) return '';
+  const visible = digits.slice(-4);
+  return `${'*'.repeat(Math.max(0, digits.length - visible.length))}${visible}`;
+}

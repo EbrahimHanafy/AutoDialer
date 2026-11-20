@@ -128,6 +128,14 @@ Everything has a sensible default, so most installations need no settings at all
 | `PUBLIC_URL` | *(empty)* | Your public address (e.g. `https://dialer.example.com`), used in printed hints and webhooks. |
 | `TRUST_PROXY` | `true` | Trust `X-Forwarded-For`/`-Proto` headers from a reverse proxy (correct client IPs for login lockout and audit). Set `false` if the server is directly exposed to the internet without a proxy. |
 | `ENGINE_INTERVAL_MS` | `3000` | How often the dialer engine checks for work (callbacks, timeouts). Rarely changed. |
+| `ASTERISK_AMI_MONITOR_ENABLED` | `false` | Enables server-side GSM Dongle monitoring. |
+| `ASTERISK_AMI_HOST` | `127.0.0.1` | Asterisk Manager Interface host. |
+| `ASTERISK_AMI_PORT` | `5038` | Asterisk Manager Interface TCP port. |
+| `ASTERISK_AMI_USERNAME` | *(empty)* | Dedicated AMI monitoring username. |
+| `ASTERISK_AMI_PASSWORD` | *(empty)* | Dedicated AMI monitoring secret. Keep it in the service environment/secrets store, never in browser settings. |
+| `ASTERISK_AMI_MONITOR_INTERVAL_MS` | `5000` | Delay between completed GSM Dongle refreshes (minimum 1000 ms). |
+| `ASTERISK_AMI_TIMEOUT_MS` | `5000` | AMI connect/action timeout (minimum 500 ms). |
+| `ASTERISK_AMI_ALLOW_COMMAND_FALLBACK` | `false` | Explicitly permits fallback to AMI's generic `Command` action when `DongleShowDevices` is unavailable. See the security note below. |
 
 How to set them:
 
@@ -144,6 +152,25 @@ PORT=80 HTTPS_PORT=443 DATA_DIR=/var/lib/opendialer npm start
 
 For services, set them in the service definition (section 6). Ports below 1024 need
 administrator/root rights on Linux/macOS.
+
+### GSM Dongle monitoring through Asterisk AMI
+
+OpenDialer first calls chan_dongle's dedicated read-only `DongleShowDevices` manager action. Authorized users receive the cached device name, live state, operational radio fields, and only the last four IMEI digits. The full IMEI, IMSI, subscriber numbers, SIM details, and raw AMI response never reach the browser. The result is refreshed once per interval regardless of how many dashboards or detail pages are open.
+
+Create a dedicated account in Asterisk's `manager.conf` (exact syntax can vary by Asterisk release):
+
+```ini
+[opendialer-monitor]
+secret = use-a-long-random-secret
+deny = 0.0.0.0/0.0.0.0
+permit = 127.0.0.1/255.255.255.255
+read = system,reporting
+write = system,reporting
+```
+
+Restrict `permit` to the OpenDialer server address, reload AMI using your normal Asterisk administration procedure, and set the `ASTERISK_AMI_*` environment variables above. Do not expose TCP 5038 to the public internet. chan_dongle must have been built with manager support so `DongleShowDevices` is registered. OpenDialer does not edit or reload Asterisk configuration.
+
+Some chan_dongle builds do not expose `DongleShowDevices`. Only in that case, an administrator may set `ASTERISK_AMI_ALLOW_COMMAND_FALLBACK=true` and grant the AMI account the `command` write privilege. This is materially more privileged: AMI's generic `Command` action can execute arbitrary Asterisk CLI commands even though OpenDialer itself hard-codes only `dongle show devices` and never accepts a command from the browser. Prefer upgrading/enabling chan_dongle's dedicated manager action.
 
 ## 5. The data directory
 

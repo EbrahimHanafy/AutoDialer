@@ -6,11 +6,13 @@ import type { AuthUser } from './auth.js';
 import { hasPermission, userFromToken } from './auth.js';
 import type { Ctx } from './context.js';
 import type { Engine } from './engine.js';
+import type { GsmDongleMonitor } from './services/gsmDongles.js';
 import { HttpError } from './errors.js';
+import { tableWallboard } from './services/phonePrivacy.js';
 
 type RtSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, { user: AuthUser; token: string; replaced?: boolean }>;
 
-export function createRealtime(ctx: Ctx, engine: Engine, servers: (HttpServer | HttpsServer)[]) {
+export function createRealtime(ctx: Ctx, engine: Engine, gsmDongles: GsmDongleMonitor, servers: (HttpServer | HttpsServer)[]) {
   const io = new Server<ClientToServerEvents, ServerToClientEvents>({
     cors: { origin: ctx.config.corsOrigins.length ? ctx.config.corsOrigins : true, credentials: true },
     pingInterval: 10000,
@@ -25,6 +27,33 @@ export function createRealtime(ctx: Ctx, engine: Engine, servers: (HttpServer | 
    * those never receive agent events and never replace the console.
    */
   const sockets = new Map<number, RtSocket>();
+
+  gsmDongles.onUpdate((snapshot) => {
+    const subscribers = nsp.adapter.rooms.get('gsm-dongles');
+    if (!subscribers) return;
+    for (const socketId of [...subscribers]) {
+      const socket = nsp.sockets.get(socketId) as RtSocket | undefined;
+      if (!socket) continue;
+      const live = userFromToken(ctx, socket.data.token);
+      if (!live || !hasPermission(live, 'dashboard.view_gsm_dongles')) {
+        socket.leave('gsm-dongles');
+        continue;
+      }
+      Object.assign(socket.data.user, live);
+      socket.emit('gsm-dongles:update', snapshot);
+    }
+  });
+
+  ctx.bus.onDomain('roles.changed', () => {
+    for (const raw of nsp.sockets.values()) {
+      const socket = raw as RtSocket;
+      const live = userFromToken(ctx, socket.data.token);
+      if (!live) continue;
+      Object.assign(socket.data.user, live);
+      if (!hasPermission(live, 'dashboard.view_gsm_dongles')) socket.leave('gsm-dongles');
+      socket.emit('permissions:changed');
+    }
+  });
 
   nsp.use((socket, next) => {
     const token = (socket.handshake.auth as { token?: string })?.token;
@@ -41,7 +70,22 @@ export function createRealtime(ctx: Ctx, engine: Engine, servers: (HttpServer | 
       if (s) (s.emit as (...a: unknown[]) => void)(event, ...args);
     },
     toSupervisors: (event, ...args) => {
-      (nsp.to('wallboard').emit as (...a: unknown[]) => void)(event, ...args);
+      const subscribers = nsp.adapter.rooms.get('wallboard');
+      if (!subscribers) return;
+      for (const socketId of [...subscribers]) {
+        const socket = nsp.sockets.get(socketId) as RtSocket | undefined;
+        if (!socket) continue;
+        const live = userFromToken(ctx, socket.data.token);
+        if (!live || !hasPermission(live, 'dashboard.view')) {
+          socket.leave('wallboard');
+          continue;
+        }
+        Object.assign(socket.data.user, live);
+        const protectedArgs = event === 'wallboard:update'
+          ? [tableWallboard(args[0] as Parameters<ServerToClientEvents['wallboard:update']>[0], hasPermission(live, 'leads.viewFullPhoneNumbers'))]
+          : args;
+        (socket.emit as (...a: unknown[]) => void)(event, ...protectedArgs);
+      }
     },
     supervisorCount: () => nsp.adapter.rooms.get('wallboard')?.size ?? 0,
   });
@@ -114,13 +158,28 @@ export function createRealtime(ctx: Ctx, engine: Engine, servers: (HttpServer | 
       handle(socket, () => {
         if (!hasPermission(user, 'dashboard.view')) throw new HttpError(403, 'Insufficient permission');
         socket.join('wallboard');
-        return engine.snapshot();
+        return tableWallboard(engine.snapshot(), hasPermission(user, 'leads.viewFullPhoneNumbers'));
       }),
     );
     socket.on(
       'wallboard:unsubscribe',
       handle(socket, () => {
         socket.leave('wallboard');
+        return undefined;
+      }),
+    );
+    socket.on(
+      'gsm-dongles:subscribe',
+      handle(socket, () => {
+        if (!hasPermission(user, 'dashboard.view_gsm_dongles')) throw new HttpError(403, 'Insufficient permission');
+        socket.join('gsm-dongles');
+        return gsmDongles.getSnapshot();
+      }),
+    );
+    socket.on(
+      'gsm-dongles:unsubscribe',
+      handle(socket, () => {
+        socket.leave('gsm-dongles');
         return undefined;
       }),
     );

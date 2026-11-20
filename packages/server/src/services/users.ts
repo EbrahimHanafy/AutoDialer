@@ -1,9 +1,9 @@
-import { SYSTEM_ROLE_PERMISSIONS, type Permission, type Role, type User, type UserCreateInput, type UserUpdateInput } from '@opendialer/shared';
+import { type Permission, type Role, type User, type UserCreateInput, type UserUpdateInput } from '@opendialer/shared';
 import type { DB } from '../db.js';
 import { buildSet, fromBool } from '../db.js';
 import { hashPassword } from '../auth.js';
 import { conflict, notFound } from '../errors.js';
-import { parsePermissions, resolveRoleKey } from './roles.js';
+import { getSystemRolePermissions, parsePermissions, resolveRoleKey } from './roles.js';
 
 export interface UserRow {
   id: number;
@@ -21,9 +21,9 @@ export interface UserRow {
   created_at: string;
 }
 
-export function mapUser(r: UserRow, includeSipPassword = false): User {
+export function mapUser(db: DB, r: UserRow, includeSipPassword = false): User {
   const custom = r.custom_role_id != null;
-  const permissions: Permission[] = custom ? parsePermissions(r.custom_role_permissions) : [...SYSTEM_ROLE_PERMISSIONS[r.role]];
+  const permissions: Permission[] = custom ? parsePermissions(r.custom_role_permissions) : getSystemRolePermissions(db, r.role);
   return {
     id: r.id,
     username: r.username,
@@ -44,7 +44,7 @@ export function mapUser(r: UserRow, includeSipPassword = false): User {
 export function listUsers(db: DB): User[] {
   return (db.prepare(`SELECT u.*, cr.name AS custom_role_name, cr.permissions AS custom_role_permissions
                         FROM users u LEFT JOIN custom_roles cr ON cr.id = u.custom_role_id
-                       ORDER BY u.role, u.username`).all() as UserRow[]).map((r) => mapUser(r));
+                       ORDER BY u.role, u.username`).all() as UserRow[]).map((r) => mapUser(db, r));
 }
 
 export function getUserRow(db: DB, id: number): UserRow | undefined {
@@ -55,7 +55,7 @@ export function getUserRow(db: DB, id: number): UserRow | undefined {
 export function getUser(db: DB, id: number, includeSipPassword = false): User {
   const r = getUserRow(db, id);
   if (!r) throw notFound('User');
-  return mapUser(r, includeSipPassword);
+  return mapUser(db, r, includeSipPassword);
 }
 
 export function findByUsername(db: DB, username: string): UserRow | undefined {

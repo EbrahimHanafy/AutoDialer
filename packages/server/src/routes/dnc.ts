@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { dncCreateSchema, normalizePhone, paginationSchema } from '@opendialer/shared';
-import { requireAnyPermission, requirePermission } from '../auth.js';
+import { hasPermission, requireAnyPermission, requirePermission } from '../auth.js';
 import type { Ctx } from '../context.js';
 import { badRequest, idParam, parse, wrap } from '../errors.js';
 import { audit } from '../services/audit.js';
 import { addDnc, importDnc, isDnc, listDnc, removeDnc } from '../services/dnc.js';
 import { getSettings } from '../services/settings.js';
+import { tableDncPage } from '../services/phonePrivacy.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -19,7 +20,10 @@ export function dncRoutes(ctx: Ctx) {
     requireAnyPermission('dnc.work', 'dnc.manage'),
     wrap((req, res) => {
       const { page, pageSize } = parse(paginationSchema, req.query);
-      res.json(listDnc(db, String(req.query.q ?? '').trim(), page, pageSize));
+      res.json(tableDncPage(
+        listDnc(db, String(req.query.q ?? '').trim(), page, pageSize),
+        hasPermission(req.user, 'leads.viewFullPhoneNumbers'),
+      ));
     }),
   );
 

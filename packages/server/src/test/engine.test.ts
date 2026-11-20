@@ -118,6 +118,28 @@ describe('preview dialing flow', () => {
     expect(lead.attempts).toBe(2);
     expect(lead.status).toBe('done'); // maxAttempts reached
   });
+
+  it('auto-dispositions failed campaign calls as NO_ANSWER and schedules the normal retry', async () => {
+    const { campaignId, leads } = await createCampaignWithLeads(t, admin, {
+      dialMode: 'preview',
+      phones: ['+14155550122'],
+    });
+    const { client } = await agentOn(campaignId, 'pv-failed');
+    await client.call('agent:ready');
+    const assigned = await client.next('lead:assigned');
+    const dial = await client.call('lead:dial', { leadId: assigned.lead.id });
+    const ended = await runCall(client, dial.data.callId, { answer: false, cause: 'failed' });
+    expect(ended.data.state).toBe('ready');
+
+    const call = (await t.api('GET', `/api/calls/${dial.data.callId}`, undefined, admin)).body;
+    expect(call.result).toBe('failed');
+    expect(call.dispositionCode).toBe('NO_ANSWER');
+    expect(call.notes).toBe('auto: call failed');
+    const lead = (await t.api('GET', `/api/leads/${leads[0].id}`, undefined, admin)).body;
+    expect(lead.attempts).toBe(1);
+    expect(lead.status).toBe('in_progress');
+    expect(lead.nextAttemptAt).not.toBeNull();
+  });
 });
 
 describe('progressive dialing', () => {

@@ -1,10 +1,12 @@
 import { Router } from 'express';
-import { requirePermission } from '../auth.js';
+import { maskPhone } from '@opendialer/shared';
+import { hasPermission, requirePermission } from '../auth.js';
 import type { Ctx } from '../context.js';
 import type { Engine } from '../engine.js';
 import { wrap } from '../errors.js';
 import { iterateCalls } from '../services/calls.js';
 import { agentReport, campaignReport, dispositionReport, hourlyReport, toCsv, todaySummary } from '../services/reports.js';
+import { tableWallboard } from '../services/phonePrivacy.js';
 
 function range(q: Record<string, string | undefined>) {
   const from = q.from ? new Date(q.from) : undefined;
@@ -44,6 +46,7 @@ export function reportRoutes(ctx: Ctx, engine: Engine) {
     requirePermission('calls.export'),
     wrap((req, res) => {
       const q = req.query as Record<string, string | undefined>;
+      const showFull = hasPermission(req.user, 'leads.viewFullPhoneNumbers');
       const rows = iterateCalls(db, {
         ...range(q),
         campaignId: q.campaignId ? Number(q.campaignId) : undefined,
@@ -55,7 +58,7 @@ export function reportRoutes(ctx: Ctx, engine: Engine) {
         endedAt: c.endedAt ?? '',
         agent: c.agentName ?? '',
         campaign: c.campaignName ?? '',
-        phone: c.phone,
+        phone: showFull ? c.phone : maskPhone(c.phone),
         lead: c.leadName ?? '',
         result: c.result,
         disposition: c.dispositionCode ?? '',
@@ -77,6 +80,7 @@ export function reportRoutes(ctx: Ctx, engine: Engine) {
     requirePermission('leads.export'),
     wrap((req, res) => {
       const q = req.query as Record<string, string | undefined>;
+      const showFull = hasPermission(req.user, 'leads.viewFullPhoneNumbers');
       const where: string[] = [];
       const params: Record<string, unknown> = {};
       if (q.campaignId) (where.push('l.campaign_id = @campaignId'), (params.campaignId = Number(q.campaignId)));
@@ -91,6 +95,7 @@ export function reportRoutes(ctx: Ctx, engine: Engine) {
            LEFT JOIN lists li ON li.id = l.list_id LEFT JOIN campaigns c ON c.id = l.campaign_id ${w} ORDER BY l.id LIMIT 200000`,
         )
         .all(params) as Record<string, unknown>[];
+      if (!showFull) for (const row of rows) row.phone = maskPhone(String(row.phone ?? ''));
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`);
       res.send(
@@ -102,7 +107,9 @@ export function reportRoutes(ctx: Ctx, engine: Engine) {
     }),
   );
 
-  r.get('/wallboard', requirePermission('dashboard.view'), (_req, res) => res.json(engine.snapshot()));
+  r.get('/wallboard', requirePermission('dashboard.view'), (req, res) => res.json(
+    tableWallboard(engine.snapshot(), hasPermission(req.user, 'leads.viewFullPhoneNumbers')),
+  ));
 
   return r;
 }

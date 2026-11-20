@@ -41,7 +41,7 @@ export function userFromToken(ctx: Ctx, token: string | undefined | null): AuthU
     const payload = jwt.verify(token, ctx.config.jwtSecret) as { sub: string };
     const row = getUserRow(ctx.db, Number(payload.sub));
     if (!row || !row.active) return null;
-    const u = mapUser(row);
+    const u = mapUser(ctx.db, row);
     return {
       id: u.id,
       username: u.username,

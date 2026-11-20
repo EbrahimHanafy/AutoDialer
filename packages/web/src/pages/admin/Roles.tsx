@@ -4,13 +4,17 @@ import { Empty, ErrorBox, Field, Modal, confirmDialog, useLoad } from '../../com
 import { api, describeError } from '../../lib/api';
 import { zodIssues } from '../../lib/format';
 import { toast } from '../../store/toasts';
+import { useAuth } from '../../store/auth';
 
-function PermissionList({ selected, disabled = false, editor = false, onChange }: { selected: Permission[]; disabled?: boolean; editor?: boolean; onChange?: (permissions: Permission[]) => void }) {
+function PermissionList({ selected, allowed, disabled = false, editor = false, onChange }: { selected: Permission[]; allowed?: readonly Permission[]; disabled?: boolean; editor?: boolean; onChange?: (permissions: Permission[]) => void }) {
   const groups = useMemo(() => {
     const map = new Map<string, typeof PERMISSIONS[number][]>();
-    for (const permission of PERMISSIONS) map.set(permission.group, [...(map.get(permission.group) ?? []), permission]);
+    for (const permission of PERMISSIONS) {
+      if (allowed && !allowed.includes(permission.key)) continue;
+      map.set(permission.group, [...(map.get(permission.group) ?? []), permission]);
+    }
     return [...map.entries()];
-  }, []);
+  }, [allowed]);
   const chosen = new Set(selected);
   return (
     <div className={editor ? 'role-permission-groups' : 'stack'}>
@@ -41,6 +45,41 @@ function PermissionList({ selected, disabled = false, editor = false, onChange }
         </fieldset>
       ))}
     </div>
+  );
+}
+
+function SystemRoleEditor({ role, onClose, onSaved }: { role: RoleDefinition; onClose: () => void; onSaved: () => void }) {
+  const mutable = role.mutablePermissions ?? [];
+  const [selected, setSelected] = useState<Permission[]>(mutable.filter((permission) => role.permissions.includes(permission)));
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    if (!mutable.length) return;
+    setBusy(true);
+    try {
+      const chosen = new Set(selected);
+      await Promise.all(mutable
+        .filter((permission) => chosen.has(permission) !== role.permissions.includes(permission))
+        .map((permission) => api.patch(`/roles/${role.key}/permissions/${permission}`, { enabled: chosen.has(permission) })));
+      await useAuth.getState().refreshMe();
+      toast.success(`${role.name} permissions updated`);
+      onSaved();
+    } catch (err) {
+      toast.error(describeError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title={`Manage ${role.name} permissions`} onClose={onClose}>
+      <p className="muted small">Only the selected configurable permissions can be changed for built-in roles.</p>
+      <PermissionList selected={selected} allowed={mutable} onChange={setSelected} />
+      <div className="form-actions">
+        <button type="button" className="btn" onClick={onClose}>Cancel</button>
+        <button type="button" className="btn primary" disabled={busy || !mutable.length} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -103,6 +142,7 @@ export default function Roles() {
   const { data, error, reload } = useLoad(() => api.get<RoleDefinition[]>('/roles'), []);
   const [editing, setEditing] = useState<RoleDefinition | 'new' | null>(null);
   const [viewing, setViewing] = useState<RoleDefinition | null>(null);
+  const [editingSystem, setEditingSystem] = useState<RoleDefinition | null>(null);
   const system = data?.filter((role) => role.system) ?? [];
   const custom = data?.filter((role) => !role.system) ?? [];
 
@@ -125,7 +165,10 @@ export default function Roles() {
               <div className="row between"><h3>{role.name}</h3><span className="badge">System</span></div>
               <p className="muted small">{role.description}</p>
               <div className="row between"><span>{role.permissions.length} permissions</span><span>{role.userCount} users</span></div>
-              <button type="button" className="btn small" onClick={() => setViewing(role)}>View permissions</button>
+              <div className="row">
+                <button type="button" className="btn small" onClick={() => setViewing(role)}>View permissions</button>
+                {role.mutablePermissions?.length ? <button type="button" className="btn small" onClick={() => setEditingSystem(role)}>Manage configurable permissions</button> : null}
+              </div>
             </article>
           ))}
         </div>
@@ -165,6 +208,7 @@ export default function Roles() {
       </section>
 
       {editing && <RoleEditor role={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />}
+      {editingSystem && <SystemRoleEditor role={editingSystem} onClose={() => setEditingSystem(null)} onSaved={() => { setEditingSystem(null); void reload(); }} />}
       {viewing && (
         <Modal title={`${viewing.name} permissions`} onClose={() => setViewing(null)}>
           <PermissionList selected={viewing.permissions} disabled />
