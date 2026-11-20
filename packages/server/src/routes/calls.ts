@@ -8,6 +8,7 @@ import { badRequest, forbidden, idParam, parse, wrap } from '../errors.js';
 import { audit } from '../services/audit.js';
 import { getCallback, listCallbacks, updateCallback } from '../services/callbacks.js';
 import { getCall, listCalls, recordingFile, saveRecording } from '../services/calls.js';
+import { tableCallPage, tableCallback } from '../services/phonePrivacy.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
@@ -22,13 +23,15 @@ export function callRoutes(ctx: Ctx) {
       const { page, pageSize } = parse(paginationSchema, req.query);
       const q = req.query as Record<string, string | undefined>;
       const u = req.user!;
+      const agentView = q.view === 'agent';
+      if (agentView && !hasPermission(u, 'agent.use')) throw forbidden('Agent console access required');
       res.json(
-        listCalls(
+        tableCallPage(listCalls(
           db,
           {
             campaignId: q.campaignId ? Number(q.campaignId) : undefined,
             // agents only see their own calls
-            userId: hasPermission(u, 'calls.manage') ? (q.userId ? Number(q.userId) : undefined) : u.id,
+            userId: agentView ? u.id : hasPermission(u, 'calls.manage') ? (q.userId ? Number(q.userId) : undefined) : u.id,
             leadId: q.leadId ? Number(q.leadId) : undefined,
             from: q.from || undefined,
             to: q.to || undefined,
@@ -38,7 +41,7 @@ export function callRoutes(ctx: Ctx) {
           },
           page,
           pageSize,
-        ),
+        ), agentView || hasPermission(u, 'leads.viewFullPhoneNumbers')),
       );
     }),
   );
@@ -94,14 +97,17 @@ export function callRoutes(ctx: Ctx) {
     wrap((req, res) => {
       const q = req.query as Record<string, string | undefined>;
       const u = req.user!;
-      const mine = q.scope !== 'all' || !hasPermission(u, 'callbacks.manage');
+      const agentView = q.view === 'agent';
+      if (agentView && !hasPermission(u, 'agent.use')) throw forbidden('Agent console access required');
+      const mine = agentView || q.scope !== 'all' || !hasPermission(u, 'callbacks.manage');
+      const showFull = agentView || hasPermission(u, 'leads.viewFullPhoneNumbers');
       res.json(
         listCallbacks(db, {
           userId: mine ? u.id : q.userId ? Number(q.userId) : undefined,
           mine,
           status: q.status ?? 'pending',
           campaignId: q.campaignId ? Number(q.campaignId) : undefined,
-        }),
+        }).map((callback) => tableCallback(callback, showFull)),
       );
     }),
   );

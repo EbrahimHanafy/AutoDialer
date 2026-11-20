@@ -140,6 +140,51 @@ describe('custom roles and permissions', () => {
     expect(roles.body.find((role: any) => role.key === 'system:agent').name).toBe('Agent');
   });
 
+  it('persists GSM monitoring grants and revocations for built-in roles across REST and Socket.IO', async () => {
+    expect((await t.api('GET', '/api/gsm-dongles', undefined, admin)).status).toBe(200);
+    expect((await t.api('GET', '/api/gsm-dongles', undefined, supervisor)).status).toBe(403);
+    expect((await t.api('GET', '/api/gsm-dongles', undefined, agent)).status).toBe(403);
+
+    const forbiddenChange = await t.api(
+      'PATCH', '/api/roles/system:supervisor/permissions/dashboard.view_gsm_dongles', { enabled: true }, supervisor,
+    );
+    expect(forbiddenChange.status).toBe(403);
+
+    const granted = await t.api(
+      'PATCH', '/api/roles/system:supervisor/permissions/dashboard.view_gsm_dongles', { enabled: true }, admin,
+    );
+    expect(granted.status).toBe(200);
+    expect(granted.body.permissions).toContain('dashboard.view_gsm_dongles');
+    expect((await t.api('GET', '/api/gsm-dongles', undefined, supervisor)).status).toBe(200);
+
+    const socket = await connectAgent(t, supervisor);
+    sockets.push(socket);
+    expect((await socket.call('gsm-dongles:subscribe')).ok).toBe(true);
+
+    const revoked = await t.api(
+      'PATCH', '/api/roles/system:supervisor/permissions/dashboard.view_gsm_dongles', { enabled: false }, admin,
+    );
+    expect(revoked.status).toBe(200);
+    expect(revoked.body.permissions).not.toContain('dashboard.view_gsm_dongles');
+    expect((await t.api('GET', '/api/gsm-dongles', undefined, supervisor)).status).toBe(403);
+    expect(await socket.call('gsm-dongles:subscribe')).toMatchObject({ ok: false, error: 'Insufficient permission' });
+
+    t.app.gsmDongles.emit('update', { status: 'available', total: 9, ready: 8, devices: [], refreshedAt: new Date().toISOString() });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(socket.received('gsm-dongles:update')).toHaveLength(0);
+  });
+
+  it('returns the latest cached monitoring snapshot to reconnecting authorized clients', async () => {
+    const first = await connectAgent(t, admin);
+    const initial = await first.call('gsm-dongles:subscribe');
+    expect(initial).toMatchObject({ ok: true, data: { status: 'unavailable', total: null } });
+    first.close();
+
+    const reconnected = await connectAgent(t, admin);
+    sockets.push(reconnected);
+    expect(await reconnected.call('gsm-dongles:subscribe')).toEqual(initial);
+  });
+
   it('does not let a custom user manager escalate to System Admin', async () => {
     const role = await t.api('POST', '/api/roles', { name: 'User manager', permissions: ['users.manage'] }, admin);
     const user = await t.api('POST', '/api/users', {

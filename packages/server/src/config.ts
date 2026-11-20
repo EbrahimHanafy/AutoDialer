@@ -26,9 +26,25 @@ export interface Config {
   /** Disable the dialer tick loop (tests). */
   engineInterval: number;
   version: string;
+  gsmDongleMonitor: {
+    enabled: boolean;
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    intervalMs: number;
+    timeoutMs: number;
+    /** Explicit opt-in because AMI's generic Command action can execute arbitrary CLI commands. */
+    allowCommandFallback: boolean;
+  };
 }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+function numericEnv(value: string | undefined, fallback: number, minimum: number): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? Math.max(minimum, Math.round(parsed)) : fallback;
+}
 
 function readVersion(): string {
   try {
@@ -86,6 +102,16 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     trustProxy: (process.env.TRUST_PROXY ?? 'true') !== 'false',
     engineInterval: Number(process.env.ENGINE_INTERVAL_MS ?? 3000),
     version: readVersion(),
+    gsmDongleMonitor: {
+      enabled: (process.env.ASTERISK_AMI_MONITOR_ENABLED ?? 'false').toLowerCase() === 'true',
+      host: process.env.ASTERISK_AMI_HOST ?? '127.0.0.1',
+      port: numericEnv(process.env.ASTERISK_AMI_PORT, 5038, 1),
+      username: process.env.ASTERISK_AMI_USERNAME ?? '',
+      password: process.env.ASTERISK_AMI_PASSWORD ?? '',
+      intervalMs: numericEnv(process.env.ASTERISK_AMI_MONITOR_INTERVAL_MS, 5000, 1000),
+      timeoutMs: numericEnv(process.env.ASTERISK_AMI_TIMEOUT_MS, 5000, 500),
+      allowCommandFallback: (process.env.ASTERISK_AMI_ALLOW_COMMAND_FALLBACK ?? 'false').toLowerCase() === 'true',
+    },
     ...overrides,
   };
   return cfg;

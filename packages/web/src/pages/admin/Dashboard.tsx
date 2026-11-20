@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { formatPhone, RT_NAMESPACE, type Ack, type Campaign, type WallboardSnapshot } from '@opendialer/shared';
+import { Link } from 'react-router-dom';
+import { formatPhone, RT_NAMESPACE, type Ack, type Campaign, type GsmDongleSnapshot, type WallboardSnapshot } from '@opendialer/shared';
 import { ErrorBox, StateBadge, confirmDialog, useLoad, useNow } from '../../components/ui';
 import { api, describeError } from '../../lib/api';
 import { getServerUrl, getToken } from '../../lib/config';
 import { fmtDuration, secondsSince } from '../../lib/format';
 import { toast } from '../../store/toasts';
+import { hasPermission, useAuth } from '../../store/auth';
+import { useGsmDongles } from '../../hooks/useGsmDongles';
 
 type Mode = 'socket' | 'polling';
 
@@ -67,8 +70,31 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function GsmDonglesStat({ snapshot }: { snapshot: GsmDongleSnapshot | null }) {
+  const status = snapshot?.status ?? 'loading';
+  const value = status === 'loading' ? 'Loading' : status === 'unavailable' ? 'Unavailable' : snapshot?.total ?? 'Unavailable';
+  return (
+    <Link to="/admin/gsm-dongles" className={`stat gsm-dongles-stat is-${status}`} data-testid="gsm-dongles-card" aria-label="View GSM Dongles details">
+      <div className="row between">
+        <div className="label">GSM Dongles</div>
+        {status === 'stale' && <span className="badge amber">Stale</span>}
+        {status === 'unavailable' && <span className="badge red">Unavailable</span>}
+      </div>
+      <div className="value">{value}</div>
+      <div className="small muted gsm-dongles-meta">
+        {(status === 'available' || status === 'stale') && snapshot?.ready != null ? <span>{snapshot.ready} ready</span> : <span>{status === 'loading' ? 'Connecting to Asterisk…' : 'Asterisk monitoring unavailable'}</span>}
+        {snapshot?.refreshedAt && <span>Last refresh {new Date(snapshot.refreshedAt).toLocaleTimeString()}</span>}
+      </div>
+      <span className="gsm-dongles-link">View details →</span>
+    </Link>
+  );
+}
+
 export default function Dashboard() {
+  const user = useAuth((state) => state.user);
+  const canViewGsmDongles = hasPermission(user, 'dashboard.view_gsm_dongles');
   const { snap, error, mode } = useWallboard();
+  const { snapshot: gsmDongles } = useGsmDongles(canViewGsmDongles);
   const campaigns = useLoad(() => api.get<Campaign[]>('/campaigns'), []);
   const now = useNow(1000);
   const names = useMemo(() => new Map((campaigns.data ?? []).map((c) => [c.id, c.name])), [campaigns.data]);
@@ -94,11 +120,12 @@ export default function Dashboard() {
         </span>
       </div>
       <ErrorBox error={error} />
-      <div className="grid cols-4">
+      <div className={`grid ${canViewGsmDongles ? 'dashboard-stats' : 'cols-4'}`}>
         <Stat label="Calls today" value={t?.calls ?? '–'} />
         <Stat label="Answered" value={t?.answered ?? '–'} />
         <Stat label="Contacts / sales" value={t ? `${t.contacts} / ${t.sales}` : '–'} />
         <Stat label="Talk time" value={t ? fmtDuration(t.talkSec) : '–'} />
+        {canViewGsmDongles && <GsmDonglesStat snapshot={gsmDongles} />}
       </div>
 
       <section className="stack">

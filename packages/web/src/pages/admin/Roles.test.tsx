@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import Roles from './Roles';
+import { api } from '../../lib/api';
 
 vi.mock('../../lib/api', () => ({
   api: {
@@ -51,6 +52,13 @@ describe('Roles permission groups', () => {
     }
   });
 
+  it('shows full customer phone access unchecked for a new custom role', () => {
+    render(<Roles />);
+    fireEvent.click(screen.getByRole('button', { name: '+ Add New Role' }));
+    const checkbox = screen.getByRole('checkbox', { name: /View Full Customer Phone Numbers/ }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+  });
+
   it('organizes granular campaign operations without the legacy manage permission', () => {
     render(<Roles />);
     fireEvent.click(screen.getByRole('button', { name: '+ Add New Role' }));
@@ -70,5 +78,23 @@ describe('Roles permission groups', () => {
       }
     }
     expect(screen.queryByRole('checkbox', { name: /Manage campaigns/ })).toBeNull();
+  });
+
+  it('lets an administrator toggle the GSM permission for a built-in role', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce([{
+      key: 'system:supervisor', id: null, name: 'Supervisor', description: 'Supervisor access',
+      system: true, systemRole: 'supervisor', permissions: ['dashboard.view'],
+      mutablePermissions: ['dashboard.view_gsm_dongles'], userCount: 1, createdAt: null, updatedAt: null,
+    }]);
+    vi.mocked(api.patch).mockResolvedValueOnce({});
+    render(<Roles />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage configurable permissions' }));
+    const checkbox = screen.getByRole('checkbox', { name: /View GSM Dongles/ }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      '/roles/system:supervisor/permissions/dashboard.view_gsm_dongles', { enabled: true },
+    ));
   });
 });

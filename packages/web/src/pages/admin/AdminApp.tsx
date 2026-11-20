@@ -21,6 +21,7 @@ const Integrations = lazy(() => import('./Integrations'));
 const Audit = lazy(() => import('./Audit'));
 const System = lazy(() => import('./System'));
 const Roles = lazy(() => import('./Roles'));
+const GsmDongles = lazy(() => import('./GsmDongles'));
 
 const campaignDetailPermissions = Object.values(CAMPAIGN_TAB_PERMISSIONS);
 const campaignPagePermissions: Permission[] = ['campaigns.view', 'campaigns.create', ...campaignDetailPermissions];
@@ -66,6 +67,7 @@ export default function AdminApp() {
           <Suspense fallback={<Loading />}>
           <Routes>
             {allowed('dashboard.view') && <Route path="dashboard" element={<Dashboard />} />}
+            {allowed('dashboard.view_gsm_dongles') && <Route path="gsm-dongles" element={<GsmDongles />} />}
             {campaignPagePermissions.some(allowed) && <Route path="campaigns" element={<Campaigns />} />}
             {canOpenCampaignDetails && <Route path="campaigns/:id" element={<CampaignDetail />} />}
             {allowed('leads.manage') && <Route path="leads" element={<Leads />} />}

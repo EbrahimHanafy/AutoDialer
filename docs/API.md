@@ -7,6 +7,8 @@ Roles: `agent` < `supervisor` < `admin`. A route marked *supervisor* also allows
 Validation errors return `400 {"error":"Validation failed","details":[{"path","message"}]}`. Other errors: `{"error": "<message>"}`.
 Request/response shapes are the TypeScript types and zod schemas in [`packages/shared/src`](../packages/shared/src) – they are the source of truth.
 
+Table and CSV phone fields are masked to their last four digits unless the authenticated role grants `leads.viewFullPhoneNumbers`. System Admin has this permission by default; Supervisor, Agent, and newly created custom roles do not. Agent Console dialing is an explicit exception: its own-call/callback views and realtime dialing payloads keep the full destination required by the browser SIP softphone.
+
 ## Public
 
 | Method | Path | Notes |
@@ -94,18 +96,18 @@ Request/response shapes are the TypeScript types and zod schemas in [`packages/s
 
 | Method | Path | Role | Notes |
 | --- | --- | --- | --- |
-| GET | `/calls?campaignId&userId&leadId&from&to&result&dispositionId&phone&page` | agent | agents only see their own |
+| GET | `/calls?campaignId&userId&leadId&from&to&result&dispositionId&phone&page` | agent | agents only see their own; table phone masking applies |
 | GET | `/calls/:id` | agent | |
 | POST | `/calls/:id/recording` | agent | multipart `file` (audio/webm, ogg, m4a, wav; ≤200 MB) |
 | GET | `/calls/:id/recording` | agent | streams the audio |
-| GET | `/callbacks?scope=mine|all&status&campaignId&userId` | agent | `Callback[]` with `lead` joined; agents always get their own + campaign-wide |
+| GET | `/callbacks?scope=mine|all&status&campaignId&userId` | agent | `Callback[]` with `lead` joined; agents always get their own + campaign-wide; table phone masking applies |
 | GET | `/callbacks/:id` | agent | |
 | PATCH | `/callbacks/:id` | agent | `callbackUpdateSchema` (reschedule / cancel / done) |
 
 ## Reports (supervisor)
 
 `/reports/summary`, `/reports/campaigns?from&to`, `/reports/agents?from&to`, `/reports/dispositions?from&to&campaignId`, `/reports/hourly?from&to&campaignId`,
-`/reports/export/calls.csv?from&to&campaignId&userId`, `/reports/export/leads.csv?campaignId&listId&status`, `/wallboard` (snapshot), `/agents` (live sessions), `POST /agents/:id/logout`.
+`/reports/export/calls.csv?from&to&campaignId&userId`, `/reports/export/leads.csv?campaignId&listId&status`, `/wallboard` (snapshot), `/gsm-dongles` (sanitized cached device states with last-four-only IMEI; requires `dashboard.view_gsm_dongles`), `/agents` (live sessions), `POST /agents/:id/logout`.
 
 ## Admin
 
@@ -129,8 +131,10 @@ Agent lifecycle:
 6. `agent:pause {code}` any time (applied after wrap-up when busy), `agent:leave {}` to log out.
 7. `manual:dial {phone, campaignId?, leadId?}` from `ready`/`paused` – ack `{callId, dialString, lead}`; then the same `call:update` / `call:dispose` flow.
 
-Server→client: `agent:state`, `lead:assigned`, `lead:released`, `call:started`, `call:ended`, `callback:due`, `notice`, `session:replaced`, `campaign:changed`, and for supervisors who sent `wallboard:subscribe`: `wallboard:update` (≤1/s).
+Server→client: `agent:state`, `lead:assigned`, `lead:released`, `call:started`, `call:ended`, `callback:due`, `notice`, `session:replaced`, `campaign:changed`, and for supervisors who sent `wallboard:subscribe`: `wallboard:update` (≤1/s). Authorized clients may send `gsm-dongles:subscribe` / `gsm-dongles:unsubscribe`; the server replies with the latest cached snapshot and emits `gsm-dongles:update` after each server-side refresh.
 
 A socket that drops keeps the agent session for 60 s; reconnecting and sending `agent:join` again resumes it (the lead and call are re-sent, with `autoDial` forced to false when a call is already up).
+
+The Agent Console uses `view=agent` for its own Calls and Callbacks panels. The server requires `agent.use`, forces those requests to the authenticated user's own scope, and returns full phone numbers because those values feed click-to-dial. `lead:assigned`, `call:started`, `callback:due`, and `manual:dial` likewise retain full dialing data. Wallboard REST and Socket.IO snapshots remain permission-masked per subscriber.
 
 A user may hold several sockets at once (for example a supervisor's wallboard tab next to their agent console). Only the socket that last sent `agent:join` is the **agent console**: it receives agent events and may send them; the previous console socket gets `session:replaced` and its agent events are refused with "no longer the active agent console". Wallboard-only sockets never replace the console.

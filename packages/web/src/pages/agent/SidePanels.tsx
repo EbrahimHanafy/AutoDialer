@@ -54,7 +54,7 @@ export function CallbacksPanel({ ctrl }: { ctrl: AgentController }) {
   const version = useAgent((s) => s.callbacksVersion);
   const state = useAgent((s) => s.agent?.state);
   const call = useAgent((s) => s.call);
-  const { data, error, reload } = useLoad(() => api.get<Callback[]>('/callbacks', { scope: 'mine', status: 'pending' }), [version]);
+  const { data, error, reload } = useLoad(() => api.get<Callback[]>('/callbacks', { scope: 'mine', status: 'pending', view: 'agent' }), [version]);
   const [editing, setEditing] = useState<Callback | null>(null);
   const canDial = (state === 'ready' || state === 'paused') && !call;
   const list = data ?? [];
@@ -133,7 +133,7 @@ export function CallbacksPanel({ ctrl }: { ctrl: AgentController }) {
 export function RecentCalls({ dispositions }: { dispositions: Disposition[] }) {
   const version = useAgent((s) => s.callsVersion);
   const disposeVersion = useAgent((s) => s.agent?.state);
-  const { data, error, reload } = useLoad(() => api.get<Paginated<CallLog>>('/calls', { page: 1, pageSize: 10 }), [version, disposeVersion === 'ready' || disposeVersion === 'assigned']);
+  const { data, error, reload } = useLoad(() => api.get<Paginated<CallLog>>('/calls', { page: 1, pageSize: 10, view: 'agent' }), [version, disposeVersion === 'ready' || disposeVersion === 'assigned']);
   const items = data?.items ?? [];
   const dispo = (id: number | null) => dispositions.find((d) => d.id === id);
   return (

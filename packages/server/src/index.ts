@@ -31,7 +31,7 @@ async function main() {
     process.exit(1);
   }
 
-  const rt = createRealtime(app.ctx, app.engine, servers);
+  const rt = createRealtime(app.ctx, app.engine, app.gsmDongles, servers);
   app.engine.start();
 
   const listen = (server: http.Server | https.Server, port: number) =>

@@ -324,10 +324,10 @@ export class Engine {
     const call = endCall(this.ctx.db, p.callId, p.cause, p.providerCallId);
     this.transport.toUser(userId, 'call:ended', { call });
     this.ctx.bus.emitDomain('call.ended', { callId: call.id });
-    if (call.result === 'no_answer') {
+    if (call.result === 'no_answer' || call.result === 'failed') {
       s.wrapupStartedAt = Date.now();
       this.setState(s, 'wrapup', null);
-      this.autoDispose(s, 'no answer');
+      this.autoDispose(s, call.result === 'failed' ? 'call failed' : 'no answer');
     } else if (s.disposedDuringCall) {
       this.finishWrapup(s);
     } else {

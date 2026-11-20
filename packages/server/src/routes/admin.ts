@@ -2,13 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
 import { apiKeyCreateSchema, paginationSchema, webhookCreateSchema, webhookUpdateSchema, WEBHOOK_EVENTS } from '@opendialer/shared';
-import { requirePermission } from '../auth.js';
+import { hasPermission, requirePermission } from '../auth.js';
 import type { Ctx } from '../context.js';
 import type { Engine } from '../engine.js';
 import { idParam, notFound, parse, wrap } from '../errors.js';
 import { createApiKey, deleteApiKey, listApiKeys } from '../services/apikeys.js';
 import { audit, listAudit } from '../services/audit.js';
 import { createWebhook, deleteWebhook, deliver, getWebhook, listWebhooks, updateWebhook } from '../services/webhooks.js';
+import { tableAgent, tableAuditPage } from '../services/phonePrivacy.js';
 
 export function adminRoutes(ctx: Ctx, engine: Engine) {
   const r = Router();
@@ -85,12 +86,17 @@ export function adminRoutes(ctx: Ctx, engine: Engine) {
     wrap((req, res) => {
       const { page, pageSize } = parse(paginationSchema, req.query);
       const q = req.query as Record<string, string | undefined>;
-      res.json(listAudit(db, page, pageSize, { entity: q.entity || undefined, userId: q.userId ? Number(q.userId) : undefined }));
+      res.json(tableAuditPage(
+        listAudit(db, page, pageSize, { entity: q.entity || undefined, userId: q.userId ? Number(q.userId) : undefined }),
+        hasPermission(req.user, 'leads.viewFullPhoneNumbers'),
+      ));
     }),
   );
 
   /* ---------- agents (supervisor control) ---------- */
-  r.get('/agents', requirePermission('dashboard.view'), (_req, res) => res.json(engine.snapshot().agents));
+  r.get('/agents', requirePermission('dashboard.view'), (req, res) => res.json(
+    engine.snapshot().agents.map((agent) => tableAgent(agent, hasPermission(req.user, 'leads.viewFullPhoneNumbers'))),
+  ));
   r.post(
     '/agents/:id/logout',
     requirePermission('dashboard.view'),

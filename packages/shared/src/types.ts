@@ -15,9 +15,36 @@ export interface RoleDefinition {
   system: boolean;
   systemRole: Role | null;
   permissions: Permission[];
+  /** Permissions that can be changed for an otherwise fixed system role. */
+  mutablePermissions?: Permission[];
   userCount: number;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+export type GsmDongleMonitorStatus = 'loading' | 'available' | 'unavailable' | 'stale';
+
+export interface GsmDongleDevice {
+  name: string;
+  state: string;
+  /** Last four digits only; the full IMEI never leaves the monitoring service. */
+  imeiLast4: string | null;
+  group: string | null;
+  rssi: string | null;
+  mode: string | null;
+  submode: string | null;
+  provider: string | null;
+  model: string | null;
+  firmware: string | null;
+}
+
+/** Authorized monitoring data. IMSI, subscriber number, and SIM details are never exposed. */
+export interface GsmDongleSnapshot {
+  status: GsmDongleMonitorStatus;
+  total: number | null;
+  ready: number | null;
+  devices: GsmDongleDevice[];
+  refreshedAt: string | null;
 }
 
 export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed';

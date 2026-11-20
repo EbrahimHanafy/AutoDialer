@@ -28,6 +28,7 @@ export const PERMISSIONS = [
   { key: 'campaigns.leads.reset', group: 'Campaign Leads', label: 'Reset campaign leads', description: 'Reset matching campaign leads to the new state with zero attempts.' },
   { key: 'leads.work', group: 'Leads', label: 'Work leads', description: 'View, create, and edit lead contact information and notes.' },
   { key: 'leads.manage', group: 'Leads', label: 'Manage leads', description: 'Manage lead queue state and delete lead records.' },
+  { key: 'leads.viewFullPhoneNumbers', group: 'Leads', label: 'View Full Customer Phone Numbers', description: 'Display complete customer phone numbers in data tables and exports.' },
   { key: 'dnc.work', group: 'Do-not-call', label: 'Use do-not-call list', description: 'View, check, and add numbers to the do-not-call list.' },
   { key: 'dnc.manage', group: 'Do-not-call', label: 'Import do-not-call numbers', description: 'Bulk import numbers into the do-not-call list.' },
   { key: 'dnc.delete', group: 'Do-not-call', label: 'Remove do-not-call numbers', description: 'Remove numbers from the do-not-call list.' },
@@ -41,6 +42,7 @@ export const PERMISSIONS = [
   { key: 'callbacks.own', group: 'Callbacks', label: 'Manage own callbacks', description: 'View and update callbacks assigned to the user.' },
   { key: 'callbacks.manage', group: 'Callbacks', label: 'Manage all callbacks', description: 'View, reassign, and update callbacks for all users.' },
   { key: 'dashboard.view', group: 'Live operations', label: 'View dashboard', description: 'View the live wallboard and force agent logout.' },
+  { key: 'dashboard.view_gsm_dongles', group: 'Live operations', label: 'View GSM Dongles', description: 'View live GSM Dongle availability from Asterisk.' },
   { key: 'reports.view', group: 'Reports', label: 'View reports', description: 'View campaign, agent, disposition, and hourly reports.' },
   { key: 'users.view', group: 'Users', label: 'View users', description: 'View users for administration, reports, and campaign assignment.' },
   { key: 'users.manage', group: 'Users', label: 'Manage users', description: 'Create, edit, deactivate, and delete users, including their role assignment.' },
@@ -101,7 +103,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   supervisor,
   admin: [
     ...supervisor,
-    'campaigns.delete', 'dnc.delete', 'dispositions.manage', 'users.manage', 'settings.manage', 'integrations.manage', 'system.manage', 'backups.export',
+    'leads.viewFullPhoneNumbers', 'dashboard.view_gsm_dongles', 'campaigns.delete', 'dnc.delete', 'dispositions.manage', 'users.manage', 'settings.manage', 'integrations.manage', 'system.manage', 'backups.export',
   ],
 };
 

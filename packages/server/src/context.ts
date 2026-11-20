@@ -19,6 +19,7 @@ export interface DomainEvents {
   /** something changed that may make leads available (import, activation, callback due …) */
   'leads.available': { campaignId: number | null };
   'settings.changed': Record<string, never>;
+  'roles.changed': { roleKey: string };
 }
 
 export class Bus extends EventEmitter {

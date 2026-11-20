@@ -9,6 +9,7 @@ import type {
   Campaign,
   Lead,
   Script,
+  GsmDongleSnapshot,
   WallboardSnapshot,
 } from './types.js';
 
@@ -86,6 +87,8 @@ export interface ClientToServerEvents {
   'call:dispose': (p: DisposePayload, ack: (r: Ack<AgentStatePayload>) => void) => void;
   'wallboard:subscribe': (p: Record<string, never>, ack: (r: Ack<WallboardSnapshot>) => void) => void;
   'wallboard:unsubscribe': (p: Record<string, never>, ack: (r: Ack) => void) => void;
+  'gsm-dongles:subscribe': (p: Record<string, never>, ack: (r: Ack<GsmDongleSnapshot>) => void) => void;
+  'gsm-dongles:unsubscribe': (p: Record<string, never>, ack: (r: Ack) => void) => void;
 }
 
 /** Events the server emits. */
@@ -97,6 +100,8 @@ export interface ServerToClientEvents {
   'call:ended': (p: { call: CallLog }) => void;
   'callback:due': (p: { callback: Callback }) => void;
   'wallboard:update': (p: WallboardSnapshot) => void;
+  'gsm-dongles:update': (p: GsmDongleSnapshot) => void;
+  'permissions:changed': () => void;
   'notice': (p: { level: 'info' | 'warning' | 'error'; message: string }) => void;
   /** another login for the same user replaced this socket */
   'session:replaced': () => void;

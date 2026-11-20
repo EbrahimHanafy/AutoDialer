@@ -21,6 +21,7 @@ export interface CustomRoleRow {
 }
 
 const allowed = new Set<string>(PERMISSION_KEYS);
+export const MUTABLE_SYSTEM_PERMISSIONS = ['dashboard.view_gsm_dongles', 'leads.viewFullPhoneNumbers'] as const satisfies readonly Permission[];
 export function parsePermissions(value: unknown): Permission[] {
   try {
     const raw = typeof value === 'string' ? JSON.parse(value) : value;
@@ -37,6 +38,30 @@ const SYSTEM_DESCRIPTIONS: Record<Role, string> = {
   supervisor: 'Current supervisor access to operations, reporting, and campaign management.',
   agent: 'Current agent access to assigned campaigns, leads, calls, and callbacks.',
 };
+
+export function getSystemRolePermissions(db: DB, role: Role): Permission[] {
+  const permissions = new Set<Permission>(SYSTEM_ROLE_PERMISSIONS[role]);
+  const rows = db.prepare('SELECT permission, allowed FROM system_role_permission_overrides WHERE role = ?').all(role) as {
+    permission: string;
+    allowed: number;
+  }[];
+  for (const row of rows) {
+    if (!allowed.has(row.permission)) continue;
+    if (row.allowed) permissions.add(row.permission as Permission);
+    else permissions.delete(row.permission as Permission);
+  }
+  return [...permissions];
+}
+
+export function updateSystemRolePermission(db: DB, role: Role, permission: Permission, enabled: boolean): RoleDefinition {
+  if (!(MUTABLE_SYSTEM_PERMISSIONS as readonly Permission[]).includes(permission)) throw conflict('This system-role permission cannot be changed');
+  db.prepare(
+    `INSERT INTO system_role_permission_overrides (role, permission, allowed, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(role, permission) DO UPDATE SET allowed = excluded.allowed, updated_at = excluded.updated_at`,
+  ).run(role, permission, enabled ? 1 : 0, new Date().toISOString());
+  return listRoles(db).find((item) => item.key === `system:${role}`)!;
+}
 
 function mapCustom(r: CustomRoleRow, userCount = 0): RoleDefinition {
   return {
@@ -61,7 +86,8 @@ export function listRoles(db: DB): RoleDefinition[] {
     description: SYSTEM_DESCRIPTIONS[role],
     system: true,
     systemRole: role,
-    permissions: [...SYSTEM_ROLE_PERMISSIONS[role]],
+    permissions: getSystemRolePermissions(db, role),
+    mutablePermissions: [...MUTABLE_SYSTEM_PERMISSIONS],
     userCount: (db.prepare('SELECT COUNT(*) AS n FROM users WHERE role = ? AND custom_role_id IS NULL').get(role) as { n: number }).n,
     createdAt: null,
     updatedAt: null,

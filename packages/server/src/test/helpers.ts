@@ -23,11 +23,18 @@ export interface TestServer {
 
 export async function startTestServer(): Promise<TestServer> {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opendialer-test-'));
-  const config = loadConfig({ dataDir, httpPort: 0, httpsPort: 0, tls: 'off', webDir: null, engineInterval: 0, jwtSecret: 'test-secret-'.repeat(4), corsOrigins: [] });
+  const config = loadConfig({
+    dataDir, httpPort: 0, httpsPort: 0, tls: 'off', webDir: null, engineInterval: 0,
+    jwtSecret: 'test-secret-'.repeat(4), corsOrigins: [],
+    gsmDongleMonitor: {
+      enabled: false, host: '127.0.0.1', port: 5038, username: '', password: '',
+      intervalMs: 10_000, timeoutMs: 500, allowCommandFallback: false,
+    },
+  });
   const log = pino({ level: 'silent' });
   const app = createApp(config, log, ':memory:');
   const server = http.createServer(app.express);
-  const rt = createRealtime(app.ctx, app.engine, [server]);
+  const rt = createRealtime(app.ctx, app.engine, app.gsmDongles, [server]);
   app.engine.start(0);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as AddressInfo).port;
@@ -144,7 +151,7 @@ export function connectAgent(t: TestServer, token: string): Promise<AgentClient>
     const socket = ioClient(t.url + RT_NAMESPACE, { auth: { token }, transports: ['websocket'], reconnection: false });
     const queues = new Map<string, unknown[]>();
     const waiters = new Map<string, ((v: unknown) => void)[]>();
-    const events = ['agent:state', 'lead:assigned', 'lead:released', 'call:started', 'call:ended', 'callback:due', 'wallboard:update', 'notice', 'session:replaced', 'campaign:changed'];
+    const events = ['agent:state', 'lead:assigned', 'lead:released', 'call:started', 'call:ended', 'callback:due', 'wallboard:update', 'gsm-dongles:update', 'permissions:changed', 'notice', 'session:replaced', 'campaign:changed'];
     for (const ev of events) {
       socket.on(ev, (payload: unknown) => {
         const w = waiters.get(ev);

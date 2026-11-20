@@ -47,7 +47,7 @@ export function authRoutes(ctx: Ctx) {
         throw unauthorized('Invalid username or password');
       }
       clearLoginFailures(key);
-      const user = mapUser(row);
+      const user = mapUser(db, row);
       audit(db, user.id, 'login', 'user', user.id, { ip: req.ip });
       res.json({ token: signToken(ctx, user), user });
     }),
