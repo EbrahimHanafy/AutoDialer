@@ -103,7 +103,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     engineInterval: Number(process.env.ENGINE_INTERVAL_MS ?? 3000),
     version: readVersion(),
     gsmDongleMonitor: {
-      enabled: (process.env.ASTERISK_AMI_MONITOR_ENABLED ?? 'false').toLowerCase() === 'true',
+      enabled: (process.env.ASTERISK_AMI_MONITOR_ENABLED ?? 'true').toLowerCase() === 'true',
       host: process.env.ASTERISK_AMI_HOST ?? '127.0.0.1',
       port: numericEnv(process.env.ASTERISK_AMI_PORT, 5038, 1),
       username: process.env.ASTERISK_AMI_USERNAME ?? '',
