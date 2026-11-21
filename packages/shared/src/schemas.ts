@@ -23,7 +23,7 @@ export function partialUpdate<T extends z.ZodRawShape>(schema: z.ZodObject<T>) {
 export const roleSchema = z.enum(['admin', 'supervisor', 'agent']);
 export const permissionSchema = z.enum(PERMISSION_KEYS as [string, ...string[]]);
 export const roleKeySchema = z.string().regex(/^(system:(admin|supervisor|agent)|custom:[1-9]\d*)$/);
-export const dialModeSchema = z.enum(['manual', 'preview', 'progressive']);
+export const dialModeSchema = z.enum(['manual', 'preview', 'progressive', 'predictive']);
 export const campaignStatusSchema = z.enum(['draft', 'active', 'paused', 'completed']);
 export const recordingPolicySchema = z.enum(['off', 'always', 'agent']);
 export const dispositionCategorySchema = z.enum(['contact', 'no_contact', 'callback', 'dnc', 'invalid']);
@@ -118,6 +118,14 @@ export const campaignCreateSchema = z.object({
   wrapupTimeoutSec: z.number().int().min(0).max(3600).default(0),
   recording: recordingPolicySchema.default('agent'),
   dialPrefix: z.string().max(10).default(''),
+  /* predictive pacing – defaults calibrated on live traffic (see docs/PREDICTIVE.md) */
+  pacingRatio: z.number().min(0.5).max(5).default(1.5),
+  maxAbandonRate: z.number().min(0).max(0.5).default(0.03),
+  abandonTimeoutSec: z.number().int().min(0).max(120).default(25),
+  bufferCalls: z.number().int().min(0).max(5).default(1),
+  launchAheadSec: z.number().int().min(0).max(120).default(19),
+  ringTimeoutSec: z.number().int().min(5).max(180).default(35),
+  amdEnabled: z.boolean().default(false),
 });
 export const campaignUpdateSchema = partialUpdate(campaignCreateSchema);
 export const campaignStatusUpdateSchema = z.object({ status: campaignStatusSchema });

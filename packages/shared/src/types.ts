@@ -54,8 +54,12 @@ export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed';
  * preview     – server hands the agent the next lead, agent reviews and clicks Dial (or Skip).
  * progressive – server hands the agent the next lead and the softphone dials immediately
  *               (one call per ready agent – "power dialing").
+ * predictive  – the server dials ahead of the agents through the PBX (AMI adapter);
+ *               an answered call is held briefly (ringback) and bridged to the next
+ *               free agent, whose softphone auto-answers. Needs predictive telephony
+ *               configured on the server (see PREDICTIVE_* env vars).
  */
-export type DialMode = 'manual' | 'preview' | 'progressive';
+export type DialMode = 'manual' | 'preview' | 'progressive' | 'predictive';
 
 export type RecordingPolicy = 'off' | 'always' | 'agent';
 
@@ -132,6 +136,21 @@ export interface Campaign {
   wrapupTimeoutSec: number; // 0 = unlimited wrap-up
   recording: RecordingPolicy;
   dialPrefix: string; // e.g. "9" or "+" - prepended by the softphone
+  /* --- predictive dialing (only used when dialMode === 'predictive') --- */
+  /** lines kept ringing per ready agent (anticipatory pacing) */
+  pacingRatio: number;
+  /** rolling abandoned/answered rate above which pacing clamps and dialing pauses */
+  maxAbandonRate: number;
+  /** seconds an answered call may wait for a free agent before it is abandoned */
+  abandonTimeoutSec: number;
+  /** answered calls that may wait (ringback hold) on top of the ready agents */
+  bufferCalls: number;
+  /** start dials this many seconds before a busy agent is expected to free up */
+  launchAheadSec: number;
+  /** seconds an originated predictive call may ring before it is given up */
+  ringTimeoutSec: number;
+  /** answering-machine detection – not implemented in the MVP, always false */
+  amdEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -222,7 +241,8 @@ export interface CallLog {
   id: number;
   leadId: number | null;
   campaignId: number | null;
-  userId: number;
+  /** null while a predictive call has not been bridged to an agent yet */
+  userId: number | null;
   phone: string;
   direction: 'out' | 'in';
   startedAt: string;
@@ -235,6 +255,12 @@ export interface CallLog {
   notes: string;
   hasRecording: boolean;
   hangupCause: string;
+  /** PBX channel of a predictive call (e.g. "Dongle/dongle0-0100000007"), null otherwise */
+  channelId: string | null;
+  /** predictive: the customer answered but no agent took the call in time */
+  abandoned: boolean;
+  /** predictive: when the customer answered and started waiting for an agent */
+  answeredWaitingAt: string | null;
   /** joined, optional */
   agentName?: string;
   campaignName?: string;

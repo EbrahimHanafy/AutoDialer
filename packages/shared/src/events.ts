@@ -33,6 +33,14 @@ export interface LeadAssignedPayload {
   dialString: string;
   /** seconds the agent has to press Dial before auto-dial (0 = none) */
   previewTimeoutSec: number;
+  /**
+   * Predictive only: the call already exists and is being bridged to this agent.
+   * The softphone must NOT dial – an incoming SIP session for `callId` arrives and
+   * is auto-answered. Absent/false for manual/preview/progressive assignments.
+   */
+  predictive?: boolean;
+  /** Predictive only: id of the already-created call row this assignment belongs to. */
+  callId?: number | null;
 }
 
 export interface AgentStatePayload {
