@@ -9,7 +9,7 @@ export interface CallRow {
   id: number;
   lead_id: number | null;
   campaign_id: number | null;
-  user_id: number;
+  user_id: number | null;
   phone: string;
   direction: 'out' | 'in';
   started_at: string;
@@ -23,6 +23,10 @@ export interface CallRow {
   recording_path: string | null;
   provider_call_id: string | null;
   hangup_cause: string;
+  channel_id: string | null;
+  amd_result: string | null;
+  abandoned: number;
+  answered_waiting_at: string | null;
   agent_name?: string;
   campaign_name?: string;
   disposition_code?: string | null;
@@ -48,6 +52,9 @@ export const mapCall = (r: CallRow): CallLog => ({
   notes: r.notes,
   hasRecording: Boolean(r.recording_path),
   hangupCause: r.hangup_cause,
+  channelId: r.channel_id ?? null,
+  abandoned: Boolean(r.abandoned),
+  answeredWaitingAt: r.answered_waiting_at ?? null,
   agentName: r.agent_name,
   campaignName: r.campaign_name,
   dispositionCode: r.disposition_code ?? null,
@@ -75,12 +82,34 @@ export function findCall(db: DB, id: number): CallLog | null {
 
 export function startCall(
   db: DB,
-  input: { leadId: number | null; campaignId: number | null; userId: number; phone: string; direction?: 'out' | 'in' },
+  input: { leadId: number | null; campaignId: number | null; userId: number | null; phone: string; direction?: 'out' | 'in' },
 ): CallLog {
   const r = db
     .prepare(`INSERT INTO calls (lead_id, campaign_id, user_id, phone, direction, started_at) VALUES (?, ?, ?, ?, ?, ?)`)
     .run(input.leadId, input.campaignId, input.userId, input.phone, input.direction ?? 'out', now());
   return getCall(db, Number(r.lastInsertRowid));
+}
+
+/* ---------- predictive bookkeeping ---------- */
+
+/** Attach the PBX channel created for a predictive call. */
+export function setCallChannel(db: DB, id: number, channelId: string) {
+  db.prepare(`UPDATE calls SET channel_id = ? WHERE id = ?`).run(channelId, id);
+}
+
+/** Set the agent once a predictive call is bridged (user_id is NULL until then). */
+export function assignCallToAgent(db: DB, id: number, userId: number) {
+  db.prepare(`UPDATE calls SET user_id = ? WHERE id = ?`).run(userId, id);
+}
+
+/** Predictive: the customer answered and is now waiting (ringback hold) for an agent. */
+export function markAnsweredWaiting(db: DB, id: number) {
+  db.prepare(`UPDATE calls SET answered_waiting_at = COALESCE(answered_waiting_at, ?) WHERE id = ?`).run(now(), id);
+}
+
+/** Predictive: the answered call waited too long and was dropped by the dialer. */
+export function markCallAbandoned(db: DB, id: number) {
+  db.prepare(`UPDATE calls SET abandoned = 1 WHERE id = ?`).run(id);
 }
 
 export function markAnswered(db: DB, id: number, providerCallId?: string) {

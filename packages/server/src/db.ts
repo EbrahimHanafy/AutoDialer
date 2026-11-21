@@ -5,7 +5,9 @@ import { DEFAULT_DISPOSITIONS } from '@opendialer/shared';
 
 export type DB = Database.Database;
 
-const MIGRATIONS: { id: number; sql: string }[] = [
+export type Migration = { id: number; sql: string } | { id: number; run: (db: DB) => void };
+
+export const MIGRATIONS: Migration[] = [
   {
     id: 1,
     sql: `
@@ -300,6 +302,101 @@ CREATE TABLE system_role_permission_overrides (
 );
 `,
   },
+  {
+    id: 6,
+    // Predictive dialing. SQLite cannot change a CHECK constraint or drop a
+    // NOT NULL with ALTER TABLE, so campaigns (dial_mode CHECK gains
+    // 'predictive', plus pacing columns) and calls (user_id becomes nullable,
+    // plus predictive bookkeeping columns) are rebuilt the 12-step way:
+    // new table -> copy -> drop -> rename. migrate() turns foreign_keys OFF
+    // around this migration (the pragma is a no-op inside a transaction) and
+    // foreign_key_check must pass before commit.
+    run: (db) => {
+      db.exec(`
+CREATE TABLE campaigns_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','paused','completed')),
+  dial_mode TEXT NOT NULL DEFAULT 'preview' CHECK (dial_mode IN ('manual','preview','progressive','predictive')),
+  caller_id TEXT NOT NULL DEFAULT '',
+  script_id INTEGER REFERENCES scripts(id) ON DELETE SET NULL,
+  calling_hours_start TEXT NOT NULL DEFAULT '09:00',
+  calling_hours_end TEXT NOT NULL DEFAULT '20:00',
+  calling_days TEXT NOT NULL DEFAULT '[1,2,3,4,5]',
+  timezone_mode TEXT NOT NULL DEFAULT 'lead' CHECK (timezone_mode IN ('lead','fixed')),
+  fixed_timezone TEXT NOT NULL DEFAULT 'UTC',
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  retry_minutes INTEGER NOT NULL DEFAULT 240,
+  preview_timeout_sec INTEGER NOT NULL DEFAULT 0,
+  wrapup_timeout_sec INTEGER NOT NULL DEFAULT 0,
+  recording TEXT NOT NULL DEFAULT 'agent' CHECK (recording IN ('off','always','agent')),
+  dial_prefix TEXT NOT NULL DEFAULT '',
+  pacing_ratio REAL NOT NULL DEFAULT 1.5,
+  max_abandon_rate REAL NOT NULL DEFAULT 0.03,
+  abandon_timeout_sec INTEGER NOT NULL DEFAULT 25,
+  buffer_calls INTEGER NOT NULL DEFAULT 1,
+  launch_ahead_sec INTEGER NOT NULL DEFAULT 19,
+  ring_timeout_sec INTEGER NOT NULL DEFAULT 35,
+  amd_enabled INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+INSERT INTO campaigns_new (
+  id, name, description, status, dial_mode, caller_id, script_id, calling_hours_start, calling_hours_end,
+  calling_days, timezone_mode, fixed_timezone, max_attempts, retry_minutes, preview_timeout_sec,
+  wrapup_timeout_sec, recording, dial_prefix, created_at, updated_at
+)
+SELECT
+  id, name, description, status, dial_mode, caller_id, script_id, calling_hours_start, calling_hours_end,
+  calling_days, timezone_mode, fixed_timezone, max_attempts, retry_minutes, preview_timeout_sec,
+  wrapup_timeout_sec, recording, dial_prefix, created_at, updated_at
+FROM campaigns;
+DROP TABLE campaigns;
+ALTER TABLE campaigns_new RENAME TO campaigns;
+
+CREATE TABLE calls_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+  campaign_id INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+  user_id INTEGER REFERENCES users(id),
+  phone TEXT NOT NULL,
+  direction TEXT NOT NULL DEFAULT 'out',
+  started_at TEXT NOT NULL,
+  answered_at TEXT,
+  ended_at TEXT,
+  duration_sec INTEGER NOT NULL DEFAULT 0,
+  talk_sec INTEGER NOT NULL DEFAULT 0,
+  result TEXT NOT NULL DEFAULT 'unknown',
+  disposition_id INTEGER REFERENCES dispositions(id) ON DELETE SET NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  recording_path TEXT,
+  provider_call_id TEXT,
+  hangup_cause TEXT NOT NULL DEFAULT '',
+  channel_id TEXT,
+  amd_result TEXT,
+  abandoned INTEGER NOT NULL DEFAULT 0,
+  answered_waiting_at TEXT
+);
+INSERT INTO calls_new (
+  id, lead_id, campaign_id, user_id, phone, direction, started_at, answered_at, ended_at, duration_sec,
+  talk_sec, result, disposition_id, notes, recording_path, provider_call_id, hangup_cause
+)
+SELECT
+  id, lead_id, campaign_id, user_id, phone, direction, started_at, answered_at, ended_at, duration_sec,
+  talk_sec, result, disposition_id, notes, recording_path, provider_call_id, hangup_cause
+FROM calls;
+DROP TABLE calls;
+ALTER TABLE calls_new RENAME TO calls;
+CREATE INDEX idx_calls_campaign ON calls(campaign_id, started_at);
+CREATE INDEX idx_calls_user ON calls(user_id, started_at);
+CREATE INDEX idx_calls_lead ON calls(lead_id);
+CREATE INDEX idx_calls_phone ON calls(phone, started_at);
+`);
+      const violations = db.pragma('foreign_key_check') as unknown[];
+      if (violations.length) throw new Error(`migration 6: foreign_key_check failed (${violations.length} violations)`);
+    },
+  },
 ];
 
 export function openDatabase(file: string): DB {
@@ -317,11 +414,27 @@ export function openDatabase(file: string): DB {
 function migrate(db: DB) {
   db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`);
   const applied = new Set(db.prepare('SELECT id FROM schema_migrations').all().map((r) => (r as { id: number }).id));
-  const apply = db.transaction((m: { id: number; sql: string }) => {
-    db.exec(m.sql);
+  const applyOne = db.transaction((m: Migration) => {
+    if ('sql' in m) db.exec(m.sql);
+    else m.run(db);
     db.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run(m.id, new Date().toISOString());
   });
-  for (const m of MIGRATIONS) if (!applied.has(m.id)) apply(m);
+  for (const m of MIGRATIONS) {
+    if (applied.has(m.id)) continue;
+    if ('run' in m) {
+      // Table-rebuild migrations must drop/recreate parent tables, which is
+      // only possible with foreign_keys OFF – and the pragma is a no-op inside
+      // a transaction, so it is toggled around the transactional apply.
+      db.pragma('foreign_keys = OFF');
+      try {
+        applyOne(m);
+      } finally {
+        db.pragma('foreign_keys = ON');
+      }
+    } else {
+      applyOne(m);
+    }
+  }
 }
 
 function seed(db: DB) {

@@ -22,6 +22,13 @@ export interface CampaignRow {
   wrapup_timeout_sec: number;
   recording: Campaign['recording'];
   dial_prefix: string;
+  pacing_ratio: number;
+  max_abandon_rate: number;
+  abandon_timeout_sec: number;
+  buffer_calls: number;
+  launch_ahead_sec: number;
+  ring_timeout_sec: number;
+  amd_enabled: number;
   created_at: string;
   updated_at: string;
 }
@@ -45,6 +52,13 @@ export const mapCampaign = (r: CampaignRow): Campaign => ({
   wrapupTimeoutSec: r.wrapup_timeout_sec,
   recording: r.recording,
   dialPrefix: r.dial_prefix,
+  pacingRatio: r.pacing_ratio,
+  maxAbandonRate: r.max_abandon_rate,
+  abandonTimeoutSec: r.abandon_timeout_sec,
+  bufferCalls: r.buffer_calls,
+  launchAheadSec: r.launch_ahead_sec,
+  ringTimeoutSec: r.ring_timeout_sec,
+  amdEnabled: Boolean(r.amd_enabled),
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -93,11 +107,13 @@ export function createCampaign(db: DB, input: CampaignCreateInput): Campaign {
   const r = db
     .prepare(
       `INSERT INTO campaigns (name, description, dial_mode, caller_id, script_id, calling_hours_start, calling_hours_end,
-        calling_days, timezone_mode, fixed_timezone, max_attempts, retry_minutes, preview_timeout_sec, wrapup_timeout_sec, recording, dial_prefix)
+        calling_days, timezone_mode, fixed_timezone, max_attempts, retry_minutes, preview_timeout_sec, wrapup_timeout_sec, recording, dial_prefix,
+        pacing_ratio, max_abandon_rate, abandon_timeout_sec, buffer_calls, launch_ahead_sec, ring_timeout_sec, amd_enabled)
        VALUES (@name, @description, @dialMode, @callerId, @scriptId, @callingHoursStart, @callingHoursEnd,
-        @callingDays, @timezoneMode, @fixedTimezone, @maxAttempts, @retryMinutes, @previewTimeoutSec, @wrapupTimeoutSec, @recording, @dialPrefix)`,
+        @callingDays, @timezoneMode, @fixedTimezone, @maxAttempts, @retryMinutes, @previewTimeoutSec, @wrapupTimeoutSec, @recording, @dialPrefix,
+        @pacingRatio, @maxAbandonRate, @abandonTimeoutSec, @bufferCalls, @launchAheadSec, @ringTimeoutSec, @amdEnabled)`,
     )
-    .run({ ...input, callingDays: JSON.stringify(input.callingDays) });
+    .run({ ...input, callingDays: JSON.stringify(input.callingDays), amdEnabled: input.amdEnabled ? 1 : 0 });
   return getCampaign(db, Number(r.lastInsertRowid));
 }
 
@@ -105,6 +121,7 @@ export function updateCampaign(db: DB, id: number, patch: CampaignUpdateInput): 
   getCampaign(db, id);
   const fields: Record<string, unknown> = { ...patch, updatedAt: now() };
   if (patch.callingDays) fields.callingDays = JSON.stringify(patch.callingDays);
+  if (patch.amdEnabled !== undefined) fields.amdEnabled = patch.amdEnabled ? 1 : 0;
   const { clause, params } = buildSet(fields, [
     'name',
     'description',
@@ -122,6 +139,13 @@ export function updateCampaign(db: DB, id: number, patch: CampaignUpdateInput): 
     'wrapupTimeoutSec',
     'recording',
     'dialPrefix',
+    'pacingRatio',
+    'maxAbandonRate',
+    'abandonTimeoutSec',
+    'bufferCalls',
+    'launchAheadSec',
+    'ringTimeoutSec',
+    'amdEnabled',
     'updatedAt',
   ]);
   db.prepare(`UPDATE campaigns SET ${clause} WHERE id = @id`).run({ ...params, id });

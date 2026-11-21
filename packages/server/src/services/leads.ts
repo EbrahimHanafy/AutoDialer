@@ -409,11 +409,20 @@ export function checkDialable(
 }
 
 /**
- * Pick and lock the next dialable lead of a campaign for an agent.
+ * Lock owner used for leads claimed by the predictive dialer itself: no agent
+ * owns the lead while the PBX call is ringing. `leads.locked_by` has no foreign
+ * key, so the -1 sentinel is safe (unlike calls.user_id, which is why that
+ * column had to become nullable instead). releaseOrphanLocks() in the engine
+ * skips this sentinel; stale locks are still recovered by releaseStaleLocks().
+ */
+export const PREDICTIVE_LOCK = -1;
+
+/**
+ * Pick and lock the next dialable lead of a campaign.
  * Order: higher priority first, then oldest next_attempt_at / id.
  * Leads outside calling hours or on DNC are skipped (not consumed).
  */
-export function claimNextLead(db: DB, campaign: Campaign, userId: number, settings: Settings, at = new Date()): Lead | null {
+function claimNextLeadLockedBy(db: DB, campaign: Campaign, lockBy: number, settings: Settings, at: Date): Lead | null {
   const candidates = db
     .prepare(
       `SELECT l.* FROM leads l
@@ -429,16 +438,30 @@ export function claimNextLead(db: DB, campaign: Campaign, userId: number, settin
     )
     .all({ campaignId: campaign.id, maxAttempts: campaign.maxAttempts, now: at.toISOString() }) as LeadRow[];
   const claim = db.prepare(
-    `UPDATE leads SET locked_by = @userId, locked_at = @now, status = 'in_progress' WHERE id = @id AND locked_by IS NULL`,
+    `UPDATE leads SET locked_by = @lockBy, locked_at = @now, status = 'in_progress' WHERE id = @id AND locked_by IS NULL`,
   );
   for (const row of candidates) {
     const lead = mapLead(row);
     const check = checkDialable(db, lead, lead.phone, campaign, settings, at);
     if (!check.ok) continue;
-    const r = claim.run({ userId, now: at.toISOString(), id: lead.id });
+    const r = claim.run({ lockBy, now: at.toISOString(), id: lead.id });
     if (r.changes === 1) return getLead(db, lead.id);
   }
   return null;
+}
+
+/** Pick and lock the next dialable lead of a campaign for an agent. */
+export function claimNextLead(db: DB, campaign: Campaign, userId: number, settings: Settings, at = new Date()): Lead | null {
+  return claimNextLeadLockedBy(db, campaign, userId, settings, at);
+}
+
+/**
+ * Pick and lock the next dialable lead for the predictive dialer loop.
+ * Same candidate query and compliance gate as claimNextLead, but the lead is
+ * locked by the PREDICTIVE_LOCK sentinel instead of an agent id.
+ */
+export function claimNextLeadForDialer(db: DB, campaign: Campaign, settings: Settings, at = new Date()): Lead | null {
+  return claimNextLeadLockedBy(db, campaign, PREDICTIVE_LOCK, settings, at);
 }
 
 /** Unlock a lead (agent skipped / disconnected / campaign paused). */
