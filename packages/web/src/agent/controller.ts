@@ -50,6 +50,8 @@ export class AgentController {
   private recorder = new CallRecorder();
   private dialInFlight = false;
   private autoDialedLeadId: number | null = null;
+  /** call id of a predictive assignment whose bridged SIP session is expected */
+  private predictiveCallId: number | null = null;
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
   private orphanTimer: ReturnType<typeof setTimeout> | null = null;
   private hadConnected = false;
@@ -546,12 +548,24 @@ export class AgentController {
     if (this.view.incoming) this.set({ incoming: null });
     const call = this.view.call;
     if (!call || call.phase === 'ended') return;
+    if (call.callId === this.predictiveCallId) this.predictiveCallId = null;
     this.setCall({ phase: 'ended', endedAt: Date.now(), cause, muted: false, held: false });
     this.sendUpdate('ended', call.callId, { cause, providerCallId });
     if (call.recording) void this.finishRecording(call.callId);
   }
 
   private onIncoming(from: string, displayName?: string) {
+    // Predictive dialing: the PBX bridges an already-answered customer call
+    // to this agent. The lead:assigned event (predictive + callId) opens the
+    // standard call screen, and the SIP invitation for that call is
+    // auto-answered – it must never surface as a generic incoming call.
+    // (In a predictive campaign the softphone only ever receives bridged
+    // calls, so the campaign check also covers an invitation that wins the
+    // race against the assignment event.)
+    if (this.predictiveCallId != null || this.view.assignment?.predictive || this.view.campaign?.dialMode === 'predictive') {
+      void this.answerIncoming();
+      return;
+    }
     this.set({ incoming: { from, displayName } });
     this.notify('info', `Incoming call from ${displayName ? `${displayName} (${from})` : from}`, {
       title: 'Incoming call',
@@ -601,6 +615,7 @@ export class AgentController {
         patch.lead = null;
         patch.disposedEarly = false;
         this.autoDialedLeadId = null;
+        this.predictiveCallId = null;
       }
       patch.previewDeadline = null;
       patch.wrapupDeadline = null;
@@ -642,6 +657,18 @@ export class AgentController {
       return;
     }
     if (v.call && v.call.phase !== 'ended') return;
+    if (p.predictive && p.callId != null) {
+      // Predictive: the call already exists on the server and the customer is
+      // already answered – open the standard call screen for it and wait for
+      // the bridged SIP session (auto-answered in onIncoming). Never dial.
+      this.clearPreviewTimer();
+      this.predictiveCallId = p.callId;
+      this.set({ assignment: p, lead: p.lead, disposedEarly: false, call: null });
+      this.beginCall(p.callId, p.lead.phone, p.lead.id, false);
+      this.setCall({ phase: 'ringing' });
+      if (this.view.incoming) void this.answerIncoming();
+      return;
+    }
     this.set({ assignment: p, lead: p.lead, disposedEarly: false, call: v.call?.leadId === p.lead.id ? v.call : null });
     if (p.callback) {
       this.notify('info', `Scheduled callback${p.callback.note ? `: ${p.callback.note}` : ''}`, { title: `Callback – ${leadName(p.lead) || p.lead.phone}` });

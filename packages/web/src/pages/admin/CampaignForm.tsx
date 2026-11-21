@@ -28,6 +28,13 @@ export function campaignToInput(c: Campaign): CampaignCreateInput {
     wrapupTimeoutSec: c.wrapupTimeoutSec,
     recording: c.recording,
     dialPrefix: c.dialPrefix,
+    pacingRatio: c.pacingRatio,
+    maxAbandonRate: c.maxAbandonRate,
+    abandonTimeoutSec: c.abandonTimeoutSec,
+    bufferCalls: c.bufferCalls,
+    launchAheadSec: c.launchAheadSec,
+    ringTimeoutSec: c.ringTimeoutSec,
+    amdEnabled: c.amdEnabled,
   };
 }
 
@@ -51,7 +58,9 @@ export function CampaignForm({
   const scripts = useLoad(() => api.get<Script[]>('/scripts'), []);
 
   const set = <K extends keyof CampaignCreateInput>(k: K, val: CampaignCreateInput[K]) => setV((p) => ({ ...p, [k]: val }));
-  const num = (k: 'maxAttempts' | 'retryMinutes' | 'previewTimeoutSec' | 'wrapupTimeoutSec') => ({
+  const num = (
+    k: 'maxAttempts' | 'retryMinutes' | 'previewTimeoutSec' | 'wrapupTimeoutSec' | 'pacingRatio' | 'maxAbandonRate' | 'abandonTimeoutSec' | 'bufferCalls' | 'launchAheadSec' | 'ringTimeoutSec',
+  ) => ({
     type: 'number' as const,
     value: Number.isFinite(v[k]) ? String(v[k]) : '',
     onChange: (e: { target: { value: string } }) => set(k, e.target.value === '' ? Number.NaN : Number(e.target.value)),
@@ -90,11 +99,12 @@ export function CampaignForm({
         <Field label="Name" error={errors.name}>
           <input name="name" value={v.name} onChange={(e) => set('name', e.target.value)} aria-invalid={Boolean(errors.name)} />
         </Field>
-        <Field label="Dial mode" hint="Preview: agent reviews then dials. Progressive: dials immediately. Manual: click-to-dial only.">
+        <Field label="Dial mode" hint="Preview: agent reviews then dials. Progressive: dials immediately. Manual: click-to-dial only. Predictive: the PBX dials ahead and bridges answered calls (needs predictive telephony configured on the server).">
           <select name="dialMode" value={v.dialMode} onChange={(e) => set('dialMode', e.target.value as CampaignCreateInput['dialMode'])}>
             <option value="preview">Preview</option>
             <option value="progressive">Progressive</option>
             <option value="manual">Manual</option>
+            <option value="predictive">Predictive</option>
           </select>
         </Field>
       </div>
@@ -189,7 +199,30 @@ export function CampaignForm({
           <input name="wrapupTimeoutSec" min={0} {...num('wrapupTimeoutSec')} />
         </Field>
       </fieldset>
-      <Field label="Call recording" hint="Recordings are made in the agent's browser and uploaded to the server.">
+      {v.dialMode === 'predictive' && (
+        <fieldset className="grid cols-3">
+          <legend>Predictive pacing</legend>
+          <Field label="Pacing ratio" hint="Lines ringing per ready agent" error={errors.pacingRatio}>
+            <input name="pacingRatio" step="0.1" min={0.5} max={5} {...num('pacingRatio')} />
+          </Field>
+          <Field label="Max abandon rate" hint="Rolling cap (0.03 = 3%) – above it, dialing falls back to progressive" error={errors.maxAbandonRate}>
+            <input name="maxAbandonRate" step="0.01" min={0} max={0.5} {...num('maxAbandonRate')} />
+          </Field>
+          <Field label="Abandon after (s)" hint="Answered call waits this long for an agent (BridgeWait hold)" error={errors.abandonTimeoutSec}>
+            <input name="abandonTimeoutSec" min={0} max={120} {...num('abandonTimeoutSec')} />
+          </Field>
+          <Field label="Buffer calls" hint="Answered calls that may wait on top of ready agents" error={errors.bufferCalls}>
+            <input name="bufferCalls" min={0} max={5} {...num('bufferCalls')} />
+          </Field>
+          <Field label="Launch ahead (s)" hint="Start dialing this long before a busy agent is expected to free up" error={errors.launchAheadSec}>
+            <input name="launchAheadSec" min={0} max={120} {...num('launchAheadSec')} />
+          </Field>
+          <Field label="Ring timeout (s)" hint="Give up an unanswered predictive call after this long" error={errors.ringTimeoutSec}>
+            <input name="ringTimeoutSec" min={5} max={180} {...num('ringTimeoutSec')} />
+          </Field>
+        </fieldset>
+      )}
+      <Field label="Call recording" hint="For predictive campaigns, recordings are made in the agent's browser from the moment the call is bridged.">
         <select name="recording" value={v.recording} onChange={(e) => set('recording', e.target.value as CampaignCreateInput['recording'])}>
           <option value="off">Off</option>
           <option value="agent">Agent decides (Record toggle)</option>

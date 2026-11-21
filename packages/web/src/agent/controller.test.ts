@@ -270,6 +270,37 @@ describe('AgentController', () => {
     s.ctrl.stop();
   });
 
+  it('predictive assignment opens the call screen and auto-answers the bridged SIP session', async () => {
+    const s = await setup();
+    const answerSpy = vi.spyOn(s.phone, 'answer');
+    await s.ctrl.join(1);
+    await s.ctrl.ready();
+    // server state goes straight to talking for a bridged predictive call
+    s.sock.fire('agent:state', state('talking', { leadId: 7, callId: 55 }));
+    s.sock.fire('lead:assigned', assigned({ predictive: true, callId: 55 }));
+
+    // the standard call screen data is there, and nothing was dialed
+    const v = useAgent.getState();
+    expect(v.lead?.id).toBe(7);
+    expect(v.assignment?.predictive).toBe(true);
+    expect(v.call?.callId).toBe(55);
+    expect(v.call?.phase).toBe('ringing');
+    expect(s.phone.lastDialed).toBeNull();
+    expect(s.sock.events('lead:dial')).toHaveLength(0);
+
+    // the bridged invitation arrives – auto-answered, no incoming toast
+    s.phone.emit('incoming', { from: '+201001234567' });
+    expect(answerSpy).toHaveBeenCalledTimes(1);
+    expect(useAgent.getState().incoming).toBeNull();
+    expect(s.notify).not.toHaveBeenCalledWith('info', expect.stringContaining('Incoming call'), expect.anything());
+
+    // session established -> talking + server told the call was answered
+    s.phone.emit('answered', { providerCallId: 'ami-1' });
+    expect(useAgent.getState().call?.phase).toBe('talking');
+    expect(s.sock.events('call:update')).toEqual([{ callId: 55, state: 'answered', providerCallId: 'ami-1' }]);
+    s.ctrl.stop();
+  });
+
   it('re-joins the stored campaign after a reconnect and restores Ready', async () => {
     const s = await setup((ev) => {
       if (ev === 'agent:join') return { ok: true, data: state('paused') };
