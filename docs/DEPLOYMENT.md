@@ -136,6 +136,12 @@ Everything has a sensible default, so most installations need no settings at all
 | `ASTERISK_AMI_MONITOR_INTERVAL_MS` | `5000` | Delay between completed GSM Dongle refreshes (minimum 1000 ms). |
 | `ASTERISK_AMI_TIMEOUT_MS` | `5000` | AMI connect/action timeout (minimum 500 ms). |
 | `ASTERISK_AMI_ALLOW_COMMAND_FALLBACK` | `false` | Explicitly permits fallback to AMI's generic `Command` action when `DongleShowDevices` is unavailable. See the security note below. |
+| `PREDICTIVE_ENABLED` | `false` | Master switch for predictive dialing. Predictive campaigns only dial when this is `true` **and** `AMI_USER`/`AMI_SECRET` are set. See [PREDICTIVE.md](PREDICTIVE.md). |
+| `AMI_HOST` | `ASTERISK_AMI_HOST` or `127.0.0.1` | AMI host for the predictive dialer connection. |
+| `AMI_PORT` | `ASTERISK_AMI_PORT` or `5038` | AMI TCP port for the predictive dialer connection. |
+| `AMI_USER` | *(empty)* | Dedicated AMI username for the dialer (separate from the monitoring account). |
+| `AMI_SECRET` | *(empty)* | Dialer AMI secret. Keep it in the service environment/secrets store. |
+| `DIALER_CHANNEL_PREFIX` | `Dongle/r0/` | Dial-string prefix for predictive customer legs; the phone number is appended. `Dongle/r0/` = chan_dongle round-robin over group 0. |
 
 How to set them:
 
@@ -171,6 +177,21 @@ write = system,reporting
 Restrict `permit` to the OpenDialer server address, reload AMI using your normal Asterisk administration procedure, and set the `ASTERISK_AMI_*` environment variables above. Do not expose TCP 5038 to the public internet. chan_dongle must have been built with manager support so `DongleShowDevices` is registered. OpenDialer does not edit or reload Asterisk configuration.
 
 Some chan_dongle builds do not expose `DongleShowDevices`. Only in that case, an administrator may set `ASTERISK_AMI_ALLOW_COMMAND_FALLBACK=true` and grant the AMI account the `command` write privilege. This is materially more privileged: AMI's generic `Command` action can execute arbitrary Asterisk CLI commands even though OpenDialer itself hard-codes only `dongle show devices` and never accepts a command from the browser. Prefer upgrading/enabling chan_dongle's dedicated manager action.
+
+### Predictive dialing through Asterisk AMI
+
+Predictive campaigns make the server dial ahead of the agents over a **separate, dedicated** AMI account (it originates and hangs up calls, unlike the read-only monitoring account above):
+
+```ini
+[opendialer-dialer]
+secret = use-a-long-random-secret
+deny = 0.0.0.0/0.0.0.0
+permit = 127.0.0.1/255.255.255.255
+read = call
+write = call,originate
+```
+
+Set `PREDICTIVE_ENABLED=true`, `AMI_USER`/`AMI_SECRET` (and `AMI_HOST`/`AMI_PORT`/`DIALER_CHANNEL_PREFIX` if non-default), give every agent their Asterisk extension as `sip_username` in their user profile, and switch the campaign's dial mode to Predictive. Full design, pacing defaults and limitations: [PREDICTIVE.md](PREDICTIVE.md).
 
 ## 5. The data directory
 

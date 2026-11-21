@@ -12,7 +12,7 @@ AutoDialer is an open-source alternative to commercial Windows-only dialers such
 ## Features
 
 **Dialing**
-- Dial modes per campaign: **Manual** (click-to-dial), **Preview** (agent sees the lead, presses Dial or Skip, optional auto-dial countdown) and **Progressive / power** (next lead is dialed the moment the agent is ready).
+- Dial modes per campaign: **Manual** (click-to-dial), **Preview** (agent sees the lead, presses Dial or Skip, optional auto-dial countdown), **Progressive / power** (next lead is dialed the moment the agent is ready) and **Predictive** (the server dials ahead through Asterisk AMI and bridges answered calls to free agents — see [docs/PREDICTIVE.md](docs/PREDICTIVE.md)).
 - Built-in **simulator** telephony mode — evaluate and train with no SIP account; swap to a real SIP trunk/PBX in Settings.
 - Softphone in the browser: SIP over WebSocket (SIP.js) → Asterisk / FreePBX / FreeSWITCH / Telnyx / any WebRTC-capable provider. Mute, hold, DTMF keypad, blind transfer, call timer.
 - Per-agent SIP credentials, caller ID and dial prefix per campaign.
@@ -118,7 +118,6 @@ Environment variables (`PORT`, `HTTPS_PORT`, `TLS`, `DATA_DIR`, `JWT_SECRET`, `C
 
 ## Roadmap
 
-- Predictive dialing (requires a media server such as Asterisk ARI / FreeSWITCH ESL so the server can dial ahead of agents)
 - Inbound call routing and queues
 - Multi-tenant mode
 - SMS / e-mail follow-ups from dispositions
