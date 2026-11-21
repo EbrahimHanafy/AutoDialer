@@ -28,6 +28,8 @@ export const PERMISSIONS = [
   { key: 'campaigns.leads.reset', group: 'Campaign Leads', label: 'Reset campaign leads', description: 'Reset matching campaign leads to the new state with zero attempts.' },
   { key: 'leads.work', group: 'Leads', label: 'Work leads', description: 'View, create, and edit lead contact information and notes.' },
   { key: 'leads.manage', group: 'Leads', label: 'Manage leads', description: 'Manage lead queue state and delete lead records.' },
+  { key: 'leads.bulkEditNextAttempt', group: 'Leads', label: 'Bulk Edit Next Attempt', description: 'Update the next attempt date and time for multiple selected leads.' },
+  { key: 'leads.bulkEditStatus', group: 'Leads', label: 'Bulk Edit Lead Status', description: 'Update the status of multiple selected leads.' },
   { key: 'leads.viewFullPhoneNumbers', group: 'Leads', label: 'View Full Customer Phone Numbers', description: 'Display complete customer phone numbers in data tables and exports.' },
   { key: 'dnc.work', group: 'Do-not-call', label: 'Use do-not-call list', description: 'View, check, and add numbers to the do-not-call list.' },
   { key: 'dnc.manage', group: 'Do-not-call', label: 'Import do-not-call numbers', description: 'Bulk import numbers into the do-not-call list.' },

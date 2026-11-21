@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { formatPhone, leadUpdateSchema, type CallLog, type Lead, type LeadList, type LeadStatus, type Paginated } from '@opendialer/shared';
+import { bulkLeadStatusUpdateSchema, bulkNextAttemptUpdateSchema, formatPhone, leadUpdateSchema, type CallLog, type Lead, type LeadList, type LeadStatus, type Paginated } from '@opendialer/shared';
 import { Empty, ErrorBox, Field, Modal, Pager, confirmDialog, useLoad } from '../../components/ui';
 import { api, describeError } from '../../lib/api';
 import { fmtDateTime, fmtDuration, fromLocalInput, leadName, toLocalInput, zodIssues } from '../../lib/format';
@@ -14,6 +14,110 @@ export function LeadStatusBadge({ status }: { status: string }) {
 }
 
 type LeadDetail = Lead & { calls: CallLog[]; callbacks: Record<string, unknown>[] };
+type BulkUpdateResult = {
+  successCount: number;
+  failureCount: number;
+  updatedLeadIds: number[];
+  failures: { leadId: number; error: string }[];
+};
+
+function BulkNextAttemptDialog({ leadIds, onClose, onApplied }: { leadIds: number[]; onClose: () => void; onApplied: (result: BulkUpdateResult) => void }) {
+  const [value, setValue] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const apply = async () => {
+    let nextAttemptAt: string | null = null;
+    try {
+      nextAttemptAt = value ? fromLocalInput(value) : null;
+    } catch {
+      setError('Enter a valid date and time');
+      return;
+    }
+    const parsed = bulkNextAttemptUpdateSchema.safeParse({ leadIds, nextAttemptAt });
+    if (!parsed.success) {
+      setError(zodIssues(parsed.error).nextAttemptAt ?? zodIssues(parsed.error).leadIds ?? 'Invalid update');
+      return;
+    }
+    setError('');
+    const formatted = nextAttemptAt ? fmtDateTime(nextAttemptAt) : 'no scheduled next attempt';
+    if (!(await confirmDialog({
+      title: 'Confirm next attempt update',
+      message: `Update ${leadIds.length} selected lead${leadIds.length === 1 ? '' : 's'} to ${formatted}?`,
+      confirmLabel: 'Update leads',
+    }))) return;
+    setBusy(true);
+    try {
+      const result = await api.patch<BulkUpdateResult>('/leads/bulk/next-attempt', parsed.data);
+      onApplied(result);
+    } catch (err) {
+      toast.error(describeError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Update Next Attempt" onClose={onClose}>
+      <div className="stack">
+        <p><strong>{leadIds.length}</strong> lead{leadIds.length === 1 ? '' : 's'} selected.</p>
+        <Field label="Next attempt" hint="Leave empty to clear the next attempt." error={error}>
+          <input type="datetime-local" value={value} onChange={(event) => setValue(event.target.value)} />
+        </Field>
+        <div className="form-actions">
+          <button type="button" className="btn" disabled={busy} onClick={onClose}>Cancel</button>
+          <button type="button" className="btn primary" disabled={busy} onClick={() => void apply()}>{busy ? 'Updating…' : 'Continue'}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function BulkStatusDialog({ leadIds, onClose, onApplied }: { leadIds: number[]; onClose: () => void; onApplied: (result: BulkUpdateResult) => void }) {
+  const [status, setStatus] = useState<LeadStatus>('new');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const apply = async () => {
+    const parsed = bulkLeadStatusUpdateSchema.safeParse({ leadIds, status });
+    if (!parsed.success) {
+      setError(zodIssues(parsed.error).status ?? zodIssues(parsed.error).leadIds ?? 'Invalid update');
+      return;
+    }
+    setError('');
+    if (!(await confirmDialog({
+      title: 'Confirm status update',
+      message: `Change ${leadIds.length} selected lead${leadIds.length === 1 ? '' : 's'} to “${status}”?`,
+      confirmLabel: 'Update leads',
+    }))) return;
+    setBusy(true);
+    try {
+      const result = await api.patch<BulkUpdateResult>('/leads/bulk/status', parsed.data);
+      onApplied(result);
+    } catch (err) {
+      toast.error(describeError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Update Status" onClose={onClose}>
+      <div className="stack">
+        <p><strong>{leadIds.length}</strong> lead{leadIds.length === 1 ? '' : 's'} selected.</p>
+        <Field label="Status" error={error}>
+          <select value={status} onChange={(event) => setStatus(event.target.value as LeadStatus)}>
+            {LEAD_STATUSES.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </Field>
+        <div className="form-actions">
+          <button type="button" className="btn" disabled={busy} onClick={onClose}>Cancel</button>
+          <button type="button" className="btn primary" disabled={busy} onClick={() => void apply()}>{busy ? 'Updating…' : 'Continue'}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 export function LeadEditor({ leadId, onClose, onSaved }: { leadId: number; onClose: () => void; onSaved: () => void }) {
   const { data, error } = useLoad(() => api.get<LeadDetail>(`/leads/${leadId}`), [leadId]);
@@ -195,12 +299,18 @@ export function LeadEditor({ leadId, onClose, onSaved }: { leadId: number; onClo
 export function LeadsTable({ campaignId, lists, showCampaign }: { campaignId?: number; lists?: LeadList[]; showCampaign?: boolean }) {
   const user = useAuth((s) => s.user);
   const canEdit = hasPermission(user, 'leads.work') || hasPermission(user, 'leads.manage');
+  const canBulkEditNextAttempt = hasPermission(user, 'leads.bulkEditNextAttempt');
+  const canBulkEditStatus = hasPermission(user, 'leads.bulkEditStatus');
+  const canSelectBulk = canBulkEditNextAttempt || canBulkEditStatus;
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [listId, setListId] = useState('');
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
+  const [bulkEditing, setBulkEditing] = useState<number[] | null>(null);
+  const [bulkStatusEditing, setBulkStatusEditing] = useState<number[] | null>(null);
   const pageSize = 50;
   const { data, error, reload } = useLoad(
     () => api.get<Paginated<Lead>>('/leads', { campaignId, listId: listId || undefined, status: status || undefined, q: query || undefined, page, pageSize }),
@@ -216,6 +326,31 @@ export function LeadsTable({ campaignId, lists, showCampaign }: { campaignId?: n
     } catch (err) {
       toast.error(describeError(err));
     }
+  };
+
+  const pageLeadIds = (data?.items ?? []).map((lead) => lead.id);
+  const allPageSelected = pageLeadIds.length > 0 && pageLeadIds.every((id) => selected.has(id));
+  const toggleSelected = (id: number, checked: boolean) => setSelected((current) => {
+    const next = new Set(current);
+    if (checked) next.add(id);
+    else next.delete(id);
+    return next;
+  });
+  const togglePage = (checked: boolean) => setSelected((current) => {
+    const next = new Set(current);
+    for (const id of pageLeadIds) {
+      if (checked) next.add(id);
+      else next.delete(id);
+    }
+    return next;
+  });
+  const finishBulkUpdate = (result: BulkUpdateResult) => {
+    if (result.failureCount) toast.error(`${result.successCount} updated, ${result.failureCount} failed`);
+    else toast.success(`${result.successCount} lead${result.successCount === 1 ? '' : 's'} updated`);
+    setSelected(new Set(result.failures.map((failure) => failure.leadId)));
+    setBulkEditing(null);
+    setBulkStatusEditing(null);
+    void reload();
   };
 
   return (
@@ -249,11 +384,43 @@ export function LeadsTable({ campaignId, lists, showCampaign }: { campaignId?: n
           Search
         </button>
       </form>
+      {canSelectBulk && (
+        <div className="row between">
+          <div className="row">
+            <select
+              aria-label="Bulk actions"
+              style={{ width: 'auto' }}
+              value=""
+              disabled={selected.size === 0}
+              onChange={(event) => {
+                if (event.target.value === 'next-attempt') setBulkEditing([...selected]);
+                if (event.target.value === 'status') setBulkStatusEditing([...selected]);
+              }}
+            >
+              <option value="">Bulk actions</option>
+              {canBulkEditNextAttempt && <option value="next-attempt">Update Next Attempt</option>}
+              {canBulkEditStatus && <option value="status">Update Status</option>}
+            </select>
+            <span className="muted small">{selected.size} selected</span>
+          </div>
+          {selected.size > 0 && <button type="button" className="btn small ghost" onClick={() => setSelected(new Set())}>Clear selection</button>}
+        </div>
+      )}
       <ErrorBox error={error} onRetry={reload} />
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
+              {canSelectBulk && (
+                <th>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all leads on this page"
+                    checked={allPageSelected}
+                    onChange={(event) => togglePage(event.target.checked)}
+                  />
+                </th>
+              )}
               <th>Name</th>
               <th>Phone</th>
               <th>Company</th>
@@ -268,6 +435,16 @@ export function LeadsTable({ campaignId, lists, showCampaign }: { campaignId?: n
           <tbody>
             {(data?.items ?? []).map((l) => (
               <tr key={l.id}>
+                {canSelectBulk && (
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${leadName(l) || l.phone}`}
+                      checked={selected.has(l.id)}
+                      onChange={(event) => toggleSelected(l.id, event.target.checked)}
+                    />
+                  </td>
+                )}
                 <td>
                   {canEdit ? (
                     <button type="button" className="btn ghost small" onClick={() => setEditing(l.id)}>
@@ -311,6 +488,20 @@ export function LeadsTable({ campaignId, lists, showCampaign }: { campaignId?: n
             setEditing(null);
             void reload();
           }}
+        />
+      )}
+      {bulkEditing && (
+        <BulkNextAttemptDialog
+          leadIds={bulkEditing}
+          onClose={() => setBulkEditing(null)}
+          onApplied={finishBulkUpdate}
+        />
+      )}
+      {bulkStatusEditing && (
+        <BulkStatusDialog
+          leadIds={bulkStatusEditing}
+          onClose={() => setBulkStatusEditing(null)}
+          onApplied={finishBulkUpdate}
         />
       )}
     </div>

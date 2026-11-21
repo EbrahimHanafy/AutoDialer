@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { CAMPAIGN_TAB_PERMISSIONS, importMappingSchema, leadCreateSchema, leadUpdateSchema, maskPhone, paginationSchema } from '@opendialer/shared';
+import { bulkLeadStatusUpdateSchema, bulkNextAttemptUpdateSchema, CAMPAIGN_TAB_PERMISSIONS, importMappingSchema, leadCreateSchema, leadUpdateSchema, maskPhone, paginationSchema } from '@opendialer/shared';
 import { hasPermission, requireAnyPermission, requirePermission } from '../auth.js';
 import type { Ctx } from '../context.js';
 import { badRequest, forbidden, idParam, parse, wrap } from '../errors.js';
@@ -8,7 +8,7 @@ import { audit } from '../services/audit.js';
 import { listCalls } from '../services/calls.js';
 import { isAgentOnCampaign } from '../services/campaigns.js';
 import { getList } from '../services/lists.js';
-import { createLead, deleteLead, getLead, guessMapping, importLeads, listLeads, parseCsvText, updateLead } from '../services/leads.js';
+import { bulkUpdateLeadStatus, bulkUpdateNextAttempt, createLead, deleteLead, getLead, guessMapping, importLeads, listLeads, parseCsvText, updateLead } from '../services/leads.js';
 import { getSettings } from '../services/settings.js';
 import { tableCall, tableLeadPage } from '../services/phonePrivacy.js';
 
@@ -76,6 +76,54 @@ export function leadRoutes(ctx: Ctx) {
       audit(db, req.user!.id, 'lead.create', 'lead', lead.id);
       ctx.bus.emitDomain('leads.available', { campaignId: list.campaignId });
       res.status(201).json(lead);
+    }),
+  );
+
+  r.patch(
+    '/leads/bulk/next-attempt',
+    requirePermission('leads.bulkEditNextAttempt'),
+    wrap((req, res) => {
+      const input = parse(bulkNextAttemptUpdateSchema, req.body);
+      const result = bulkUpdateNextAttempt(db, input.leadIds, input.nextAttemptAt);
+      audit(db, req.user!.id, 'leads.bulk_next_attempt.update', 'lead', null, {
+        nextAttemptAt: input.nextAttemptAt,
+        requested: input.leadIds.length,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+        leadIds: result.updatedLeadIds,
+      });
+      for (const campaignId of result.campaignIds) ctx.bus.emitDomain('leads.available', { campaignId });
+      res.json({
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+        updatedLeadIds: result.updatedLeadIds,
+        failures: result.failures,
+      });
+    }),
+  );
+
+  r.patch(
+    '/leads/bulk/status',
+    requirePermission('leads.bulkEditStatus'),
+    wrap((req, res) => {
+      const input = parse(bulkLeadStatusUpdateSchema, req.body);
+      const result = bulkUpdateLeadStatus(db, input.leadIds, input.status);
+      audit(db, req.user!.id, 'leads.bulk_status.update', 'lead', null, {
+        status: input.status,
+        requested: input.leadIds.length,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+        leadIds: result.updatedLeadIds,
+      });
+      if (input.status === 'new') {
+        for (const campaignId of result.campaignIds) ctx.bus.emitDomain('leads.available', { campaignId });
+      }
+      res.json({
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+        updatedLeadIds: result.updatedLeadIds,
+        failures: result.failures,
+      });
     }),
   );
 

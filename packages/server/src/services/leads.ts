@@ -183,6 +183,61 @@ export function updateLead(db: DB, id: number, patch: LeadUpdateInput, defaultCo
   return getLead(db, id);
 }
 
+export interface BulkLeadUpdateResult {
+  successCount: number;
+  failureCount: number;
+  updatedLeadIds: number[];
+  failures: { leadId: number; error: string }[];
+  campaignIds: number[];
+}
+
+function bulkUpdateLeads(db: DB, leadIds: number[], update: (leadId: number) => number): BulkLeadUpdateResult {
+  const updatedLeadIds: number[] = [];
+  const failures: { leadId: number; error: string }[] = [];
+  const campaignIds = new Set<number>();
+  const find = db.prepare('SELECT campaign_id FROM leads WHERE id = ?');
+
+  for (const leadId of leadIds) {
+    try {
+      const lead = find.get(leadId) as { campaign_id: number } | undefined;
+      if (!lead) {
+        failures.push({ leadId, error: 'Lead not found' });
+        continue;
+      }
+      if (update(leadId) !== 1) {
+        failures.push({ leadId, error: 'Lead was not updated' });
+        continue;
+      }
+      updatedLeadIds.push(leadId);
+      campaignIds.add(lead.campaign_id);
+    } catch {
+      failures.push({ leadId, error: 'Lead was not updated' });
+    }
+  }
+
+  return {
+    successCount: updatedLeadIds.length,
+    failureCount: failures.length,
+    updatedLeadIds,
+    failures,
+    campaignIds: [...campaignIds],
+  };
+}
+
+/** Update only next_attempt_at, continuing when an individual lead cannot be updated. */
+export function bulkUpdateNextAttempt(db: DB, leadIds: number[], nextAttemptAt: string | null): BulkLeadUpdateResult {
+  const update = db.prepare('UPDATE leads SET next_attempt_at = ? WHERE id = ?');
+  return bulkUpdateLeads(db, leadIds, (leadId) => update.run(nextAttemptAt, leadId).changes);
+}
+
+/** Apply the existing status-change semantics without modifying unrelated lead fields. */
+export function bulkUpdateLeadStatus(db: DB, leadIds: number[], status: LeadStatus): BulkLeadUpdateResult {
+  const update = status === 'new'
+    ? db.prepare(`UPDATE leads SET status = ?, next_attempt_at = NULL, locked_by = NULL, locked_at = NULL WHERE id = ?`)
+    : db.prepare('UPDATE leads SET status = ? WHERE id = ?');
+  return bulkUpdateLeads(db, leadIds, (leadId) => update.run(status, leadId).changes);
+}
+
 export function deleteLead(db: DB, id: number) {
   getLead(db, id);
   db.prepare('DELETE FROM leads WHERE id = ?').run(id);
