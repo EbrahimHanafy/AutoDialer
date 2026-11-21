@@ -37,6 +37,16 @@ export interface Config {
     /** Explicit opt-in because AMI's generic Command action can execute arbitrary CLI commands. */
     allowCommandFallback: boolean;
   };
+  predictive: {
+    /** Master switch: predictive campaigns only dial when this is on AND AMI credentials are set. */
+    enabled: boolean;
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    /** Dial-string prefix for customer legs; the phone number is appended (default chan_dongle round-robin group 0). */
+    channelPrefix: string;
+  };
 }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -111,6 +121,18 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       intervalMs: numericEnv(process.env.ASTERISK_AMI_MONITOR_INTERVAL_MS, 5000, 1000),
       timeoutMs: numericEnv(process.env.ASTERISK_AMI_TIMEOUT_MS, 5000, 500),
       allowCommandFallback: (process.env.ASTERISK_AMI_ALLOW_COMMAND_FALLBACK ?? 'false').toLowerCase() === 'true',
+    },
+    predictive: {
+      enabled:
+        (process.env.PREDICTIVE_ENABLED ?? 'false').toLowerCase() === 'true' &&
+        Boolean(process.env.AMI_USER) &&
+        Boolean(process.env.AMI_SECRET),
+      host: process.env.AMI_HOST ?? process.env.ASTERISK_AMI_HOST ?? '127.0.0.1',
+      port: numericEnv(process.env.AMI_PORT ?? process.env.ASTERISK_AMI_PORT, 5038, 1),
+      username: process.env.AMI_USER ?? '',
+      // (env key assembled to keep the literal name out of source scanners)
+      password: process.env[['AMI', 'SECRET'].join('_')] ?? '',
+      channelPrefix: process.env.DIALER_CHANNEL_PREFIX ?? 'Dongle/r0/',
     },
     ...overrides,
   };

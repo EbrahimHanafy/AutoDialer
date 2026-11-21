@@ -25,11 +25,16 @@ import { userRoutes } from './routes/users.js';
 import { closeDanglingCalls } from './services/calls.js';
 import { startWebhookDispatcher } from './services/webhooks.js';
 import { GsmDongleMonitor } from './services/gsmDongles.js';
+import { AmiConnection } from './telephony/ami.js';
+import { AmiPredictiveAdapter } from './telephony/amiAdapter.js';
+import type { TelephonyAdapter } from './telephony/types.js';
 
 export interface App {
   ctx: Ctx;
   engine: Engine;
   gsmDongles: GsmDongleMonitor;
+  /** predictive telephony adapter (null unless PREDICTIVE_ENABLED + AMI credentials are configured) */
+  telephony: TelephonyAdapter | null;
   express: express.Express;
   close: () => void;
 }
@@ -42,7 +47,18 @@ export function createApp(config: Config, log: Logger, dbFile = path.join(config
   const db = openDatabase(dbFile);
   const bus = new Bus();
   const ctx: Ctx = { db, config, log, bus };
-  const engine = new Engine(ctx);
+  let amiConnection: AmiConnection | null = null;
+  let telephony: TelephonyAdapter | null = null;
+  if (config.predictive.enabled) {
+    amiConnection = new AmiConnection(
+      { host: config.predictive.host, port: config.predictive.port, username: config.predictive.username, secret: config.predictive.password },
+      (msg, err) => log.warn({ err }, msg),
+    );
+    telephony = new AmiPredictiveAdapter(amiConnection, { channelPrefix: config.predictive.channelPrefix });
+    void amiConnection.connect().catch((err) => log.warn({ err }, 'predictive AMI connect failed – it will keep retrying in the background'));
+    log.info({ host: config.predictive.host, port: config.predictive.port }, 'predictive dialing telephony enabled (AMI)');
+  }
+  const engine = new Engine(ctx, telephony);
   const gsmDongles = new GsmDongleMonitor(config.gsmDongleMonitor, log);
   const stopWebhooks = startWebhookDispatcher(ctx);
   closeDanglingCalls(db);
@@ -117,10 +133,13 @@ export function createApp(config: Config, log: Logger, dbFile = path.join(config
     ctx,
     engine,
     gsmDongles,
+    telephony,
     express: app,
     close: () => {
       engine.stop();
       gsmDongles.stop();
+      telephony?.close();
+      amiConnection?.close();
       stopWebhooks();
       db.close();
     },
