@@ -157,6 +157,18 @@ export const leadUpdateSchema = z.object({
   attempts: z.number().int().min(0).optional(),
 });
 
+const bulkLeadIdsSchema = z.array(z.number().int().positive()).min(1).max(500).refine((ids) => new Set(ids).size === ids.length, 'Lead IDs must be unique');
+
+export const bulkNextAttemptUpdateSchema = z.object({
+  leadIds: bulkLeadIdsSchema,
+  nextAttemptAt: z.string().datetime({ offset: true }).nullable(),
+});
+
+export const bulkLeadStatusUpdateSchema = z.object({
+  leadIds: bulkLeadIdsSchema,
+  status: leadStatusSchema,
+});
+
 /** Column mapping for CSV import: csv header -> lead field. */
 export const importMappingSchema = z.object({
   phone: z.string().min(1),
@@ -228,6 +240,8 @@ export type CampaignCreateInput = z.infer<typeof campaignCreateSchema>;
 export type CampaignUpdateInput = z.infer<typeof campaignUpdateSchema>;
 export type LeadCreateInput = z.infer<typeof leadCreateSchema>;
 export type LeadUpdateInput = z.infer<typeof leadUpdateSchema>;
+export type BulkNextAttemptUpdateInput = z.infer<typeof bulkNextAttemptUpdateSchema>;
+export type BulkLeadStatusUpdateInput = z.infer<typeof bulkLeadStatusUpdateSchema>;
 export type ImportMapping = z.infer<typeof importMappingSchema>;
 export type DispositionCreateInput = z.infer<typeof dispositionCreateSchema>;
 export type SettingsInput = z.infer<typeof settingsSchema>;

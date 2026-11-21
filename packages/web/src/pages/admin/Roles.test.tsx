@@ -59,6 +59,22 @@ describe('Roles permission groups', () => {
     expect(checkbox.checked).toBe(false);
   });
 
+  it('shows bulk next-attempt editing as an independent unchecked permission', () => {
+    render(<Roles />);
+    fireEvent.click(screen.getByRole('button', { name: '+ Add New Role' }));
+    const group = screen.getByRole('group', { name: 'Leads' });
+    const checkbox = within(group).getByRole('checkbox', { name: /Bulk Edit Next Attempt/ }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+  });
+
+  it('shows bulk lead-status editing as an independent unchecked permission', () => {
+    render(<Roles />);
+    fireEvent.click(screen.getByRole('button', { name: '+ Add New Role' }));
+    const group = screen.getByRole('group', { name: 'Leads' });
+    const checkbox = within(group).getByRole('checkbox', { name: /Bulk Edit Lead Status/ }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+  });
+
   it('organizes granular campaign operations without the legacy manage permission', () => {
     render(<Roles />);
     fireEvent.click(screen.getByRole('button', { name: '+ Add New Role' }));

@@ -21,7 +21,7 @@ export interface CustomRoleRow {
 }
 
 const allowed = new Set<string>(PERMISSION_KEYS);
-export const MUTABLE_SYSTEM_PERMISSIONS = ['dashboard.view_gsm_dongles', 'leads.viewFullPhoneNumbers'] as const satisfies readonly Permission[];
+export const MUTABLE_SYSTEM_PERMISSIONS = ['dashboard.view_gsm_dongles', 'leads.viewFullPhoneNumbers', 'leads.bulkEditNextAttempt', 'leads.bulkEditStatus'] as const satisfies readonly Permission[];
 export function parsePermissions(value: unknown): Permission[] {
   try {
     const raw = typeof value === 'string' ? JSON.parse(value) : value;
