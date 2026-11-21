@@ -312,7 +312,11 @@ CREATE TABLE system_role_permission_overrides (
     // around this migration (the pragma is a no-op inside a transaction) and
     // foreign_key_check must pass before commit.
     run: (db) => {
-      db.exec(`
+      // A real database always has both tables (migration 1); the existence
+      // checks only guard synthetic partial-schema fixtures.
+      const hasTable = (name: string) =>
+        db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name) != null;
+      if (hasTable('campaigns')) db.exec(`
 CREATE TABLE campaigns_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -354,7 +358,8 @@ SELECT
 FROM campaigns;
 DROP TABLE campaigns;
 ALTER TABLE campaigns_new RENAME TO campaigns;
-
+`);
+      if (hasTable('calls')) db.exec(`
 CREATE TABLE calls_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
